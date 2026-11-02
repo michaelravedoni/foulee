@@ -7,3 +7,5 @@ export * from './pdf.js';
 export { pdfText } from './text.js';
 export * from './jumpreport.js';
 export * from './jumpcsv.js';
+export * from './throwreport.js';
+export * from './throwcsv.js';

@@ -2,6 +2,8 @@
 import { computed, ref } from 'vue';
 import {
   analyzeJump,
+  analyzeThrow,
+  throwSpecFor,
   analyzeSprint,
   jumpSpecFor,
   athleteName,
@@ -13,7 +15,7 @@ import {
   type Trial,
 } from '@foulee/core';
 import type { FrameImage } from '@foulee/media';
-import type { HistoryTrial, JumpHistoryTrial, JumpReportInput, ReportImage, ReportInput } from '@foulee/report';
+import type { HistoryTrial, JumpHistoryTrial, JumpReportInput, ReportImage, ThrowHistoryTrial, ThrowReportInput, ReportInput } from '@foulee/report';
 import { analysisOf, mediaOf, state, trialsOfAthlete } from '../store/data';
 import { formatDate } from '../lib/format';
 
@@ -27,6 +29,7 @@ const props = defineProps<{
 
 const spec = computed(() => specFor(props.trial.discipline));
 const jump = computed(() => jumpSpecFor(props.trial.discipline));
+const thr = computed(() => throwSpecFor(props.trial.discipline));
 const busy = ref('');
 const error = ref('');
 
@@ -119,6 +122,61 @@ async function jumpImages(): Promise<ReportImage[]> {
   return imagesAt(frames);
 }
 
+function throwHistory(): ThrowHistoryTrial[] {
+  const ts = thr.value;
+  if (!ts) return [];
+  const cur = props.trial;
+  const sessionDate = (t: Trial) => state.sessions.get(t.sessionId)?.date ?? t.createdAt.slice(0, 10);
+  return trialsOfAthlete(cur.athleteId)
+    .filter((t) => t.id !== cur.id && t.discipline === cur.discipline && !t.deletedAt)
+    .map((t) => ({ t, an: analysisOf(t.id), media: mediaOf(t) }))
+    .filter(({ an }) => an.events.length >= 1)
+    .map(({ t, an, media }) => {
+      const f = media?.nominalFps ?? props.fps;
+      const date = sessionDate(t);
+      return { id: t.id, label: `${formatDate(date)} · essai ${t.number}`, date, analysis: analyzeThrow(ts, an.events, an.trajectories ?? [], an.calibration, timeSourceFromEvents(an.events, f), realTimeScale(f, t.captureFps)) };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+async function throwImages(): Promise<ReportImage[]> {
+  const wanted: [string, string][] = [['puissance', 'Position de puissance'], ['rotation', 'Début de rotation'], ['pascroises', 'Pas croisés'], ['tour', 'Premier tour'], ['blocage', 'Blocage'], ['lacher', 'Lâcher']];
+  const frames = wanted
+    .map(([type, label]) => ({ f: props.analysis.events.find((e) => e.type === type)?.frame, label }))
+    .filter((x): x is { f: number; label: string } => x.f !== undefined)
+    .slice(0, 6);
+  return imagesAt(frames);
+}
+
+async function buildThrowInput(withImages: boolean): Promise<ThrowReportInput | null> {
+  const ts = thr.value;
+  const tl = props.timeline;
+  if (!ts || !tl) return null;
+  const t = props.trial;
+  const session = state.sessions.get(t.sessionId);
+  const athlete = state.athletes.get(t.athleteId);
+  const media = mediaOf(t);
+  return {
+    athleteName: athlete ? athleteName(athlete) : '-',
+    disciplineLabel: ts.label,
+    throwId: ts.id,
+    date: session?.date ?? t.createdAt.slice(0, 10),
+    ...(session?.place ? { place: session.place } : {}),
+    ...(session?.weather ? { weather: session.weather } : {}),
+    trialNumber: t.number,
+    notes: t.notes,
+    ...(t.officialResult ? { officialResult: t.officialResult } : {}),
+    nominalFps: media?.nominalFps ?? props.fps,
+    ...(t.captureFps ? { captureFps: t.captureFps } : {}),
+    ...(props.analysis.calibration ? { calibration: props.analysis.calibration } : {}),
+    specDataVersion: ts.dataVersion,
+    analysis: analyzeThrow(ts, props.analysis.events, props.analysis.trajectories ?? [], props.analysis.calibration, tl, realTimeScale(props.fps, t.captureFps)),
+    history: throwHistory(),
+    images: withImages ? await throwImages() : [],
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 async function buildJumpInput(withImages: boolean): Promise<JumpReportInput | null> {
   const js = jump.value;
   const tl = props.timeline;
@@ -199,6 +257,15 @@ async function run(kind: 'athlete' | 'coach' | 'csv' | 'csvHistory') {
   try {
     const withImages = kind === 'athlete' || kind === 'coach';
     const report = await import('@foulee/report');
+    if (thr.value) {
+      const ti = await buildThrowInput(withImages);
+      if (!ti) throw new Error('la vidéo n’est pas encore prête');
+      if (kind === 'athlete') save(await report.renderPdf(report.buildThrowAthleteReport(ti)), 'application/pdf', `${fileBase.value}-athlete.pdf`);
+      else if (kind === 'coach') save(await report.renderPdf(report.buildThrowCoachReport(ti)), 'application/pdf', `${fileBase.value}-coach.pdf`);
+      else if (kind === 'csv') save('﻿' + report.csvThrow(ti), 'text/csv;charset=utf-8', `${fileBase.value}.csv`);
+      else save('﻿' + report.csvThrowHistory(ti), 'text/csv;charset=utf-8', `${fileBase.value}-historique.csv`);
+      return;
+    }
     if (jump.value) {
       const ji = await buildJumpInput(withImages);
       if (!ji) throw new Error('la vidéo n’est pas encore prête');
@@ -223,8 +290,8 @@ async function run(kind: 'athlete' | 'coach' | 'csv' | 'csvHistory') {
 </script>
 
 <template>
-  <div v-if="!spec && !jump" class="stack">
-    <p class="small muted">Les rapports couvrent pour l’instant le sprint, les haies et les sauts.</p>
+  <div v-if="!spec && !jump && !thr" class="stack">
+    <p class="small muted">Les rapports couvrent pour l’instant le sprint, les haies, les sauts et les lancers.</p>
   </div>
   <div v-else class="stack">
     <p class="small muted">

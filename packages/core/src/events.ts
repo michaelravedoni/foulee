@@ -16,6 +16,13 @@ export const BASIC_EVENT_TYPES = [
   { id: 'sommet', label: 'Sommet', key: 's', sided: false },
   { id: 'planter', label: 'Pose de la perche', key: 'f', sided: false },
   { id: 'barre', label: 'Passage de la barre', key: 'b', sided: false },
+  { id: 'puissance', label: 'Position de puissance', key: 'w', sided: false },
+  { id: 'rotation', label: 'Début de rotation', key: 'g', sided: false },
+  { id: 'pascroises', label: 'Pas croisés', key: 'v', sided: false },
+  { id: 'blocage', label: 'Blocage', key: 'k', sided: false },
+  { id: 'tour', label: 'Début de tour', key: 't', sided: false },
+  { id: 'pointbas', label: 'Point bas', key: 'n', sided: false },
+  { id: 'impact', label: 'Chute de l’engin', key: 'i', sided: false },
   { id: 'repere', label: 'Repère libre', key: 'm', sided: false },
 ] as const;
 

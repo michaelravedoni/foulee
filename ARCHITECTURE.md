@@ -173,3 +173,17 @@ La licence du projet est provisoirement « tous droits réservés » (voir `LICE
 - Rapports : `jumpreport.ts` (athlète / coach), `jumpcsv.ts` ; `ReportPanel.vue` choisit selon `jumpSpecFor`. L'historique est recalculé avec `analyzeJump`.
 - Limites : aucune validation sur de vrais sauts ; pas de détection de la planche ou de la barre ; les repères uniques (appel, réception,
   sommet, pose, lâcher, barre) sont remplacés quand on les replace.
+
+## Phase 7 : lancers (poids, disque, javelot, marteau)
+
+- `throwspec.ts` : gabarit par engin (puissance/rotation/pas croisés/tours, blocage, lâcher, chute de l'engin) et garde-fous de plausibilité
+  (vitesse et angle de lâcher, durée d'un tour de marteau), à valider avec des entraîneurs.
+- `throws.ts` (`analyzeThrow`) : fonction pure. Suivi manuel de l'engin : la trajectoire pointée (outil Trajectoire) donne, par régression linéaire
+  sur les premiers points après le lâcher, la vitesse et l'angle de lâcher. La vitesse verticale est ramenée à l'instant du lâcher (correction g·Δt).
+  Marges : pointage (±2 px) sur la pente + incertitude de l'étalon. Mesures dans le plan de l'image (caméra perpendiculaire requise).
+- Marteau : durée de chaque tour (début de tour → début suivant, dernier tour → lâcher), nombre de tours, accélération (premier − dernier tour).
+  Détection automatique des tours : non faite (repères manuels).
+- Portée balistique (poids, marteau, si la hauteur de lâcher est saisie) : indicative, sans résistance de l'air. Pas de modèle pour le disque et le javelot
+  (portance). La distance est la valeur saisie sur le repère « chute de l'engin ».
+- Suivi du cercle / position dans le cercle : pas implémenté (l'étalon et la trajectoire libre restent disponibles).
+- `EventTemplate.vue` : gabarit d'événements commun aux sauts et lancers. Rapports : `throwreport.ts`, `throwcsv.ts`.

@@ -405,3 +405,40 @@ test('saut en longueur : gabarit, mesures et rapport', async ({ page }) => {
     expect(head).toBe('%PDF-');
   }
 });
+
+test('marteau : tours, gabarit et rapport', async ({ page }) => {
+  await page.goto('./');
+  await page.getByRole('navigation').getByRole('link', { name: 'Athlètes' }).click();
+  await page.getByRole('button', { name: '＋ Ajouter' }).click();
+  await page.getByLabel('Prénom').fill('Tom');
+  await page.getByLabel('Nom', { exact: true }).fill('Marteau');
+  await page.getByRole('button', { name: 'Créer' }).click();
+  await page.getByRole('navigation').getByRole('link', { name: 'Séances' }).click();
+  await page.getByRole('button', { name: '＋ Nouvelle séance' }).click();
+  await page.locator('input[type=file]').setInputFiles([VIDEO]);
+  await page.getByLabel('Athlète').selectOption({ label: 'Tom Marteau' });
+  await page.getByLabel('Épreuve').selectOption('marteau');
+  await page.getByRole('button', { name: 'Importer', exact: true }).click();
+  await expect(page.getByText(/240 images · 120 i\/s/)).toBeVisible({ timeout: 20_000 });
+  await page.locator('.hud-tc').click();
+  await waitFrame(page, 0);
+
+  await page.getByRole('button', { name: 'Épreuve', exact: true }).click();
+  await expect(page.getByRole('heading', { name: /Gabarit du marteau/i })).toBeVisible();
+  for (const step of [0, 60, 60, 50]) {
+    for (let i = 0; i < step; i++) await page.keyboard.press('ArrowRight');
+    if (step === 50) await page.getByRole('button', { name: 'Lâcher', exact: true }).click();
+    else await page.getByRole('button', { name: 'Début de tour', exact: true }).click();
+  }
+  await expect(page.locator('.throw table.tbl').first()).toContainText('Nombre de tours');
+  await expect(page.locator('.throw table.tbl').nth(1)).toContainText('Tour 3');
+  await expect(page.getByText(/Sans étalon/)).toBeVisible();
+
+  await page.getByRole('button', { name: 'Rapports', exact: true }).click();
+  for (const [button, suffix] of [['PDF athlète', 'athlete.pdf'], ['PDF coach', 'coach.pdf']] as const) {
+    const [download] = await Promise.all([page.waitForEvent('download', { timeout: 30_000 }), page.getByRole('button', { name: button }).click()]);
+    expect(download.suggestedFilename()).toContain(suffix);
+    const head = (await import('node:fs')).readFileSync((await download.path())!).subarray(0, 5).toString('latin1');
+    expect(head).toBe('%PDF-');
+  }
+});
