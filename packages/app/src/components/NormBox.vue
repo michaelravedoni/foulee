@@ -34,7 +34,7 @@ const fmt = (v: number) => formatResult(props.trial.discipline, v);
 </script>
 
 <template>
-  <div class="card stack" data-testid="norm-box">
+  <div v-if="state.norms.length" class="card stack" data-testid="norm-box">
     <h3>Normes · {{ disciplineLabel(trial.discipline) }}</h3>
     <p v-if="result" class="small muted">Résultat mesuré : {{ fmt(result.value) }} (± {{ fmt(result.margin) }}).</p>
     <p v-if="!rows.length" class="small muted">

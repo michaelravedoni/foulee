@@ -1,13 +1,24 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watchEffect } from 'vue';
-import { RouterLink, RouterView } from 'vue-router';
+import { RouterLink, RouterView, useRouter } from 'vue-router';
 import { initStore, resetLocalStorage, state } from './store/data';
 import { settings } from './store/settings';
-import { applyUpdate, needRefresh, offlineReady, setupPwa } from './lib/pwa';
+import { applyUpdate, needRefresh, setupPwa } from './lib/pwa';
+import { pendingImport, quickImport } from './lib/quick';
+import VideoPicker from './components/VideoPicker.vue';
+import ImportDialog from './components/ImportDialog.vue';
 import { locked } from './lib/lock';
 import LockOverlay from './components/LockOverlay.vue';
 
 const location = window.location;
+const router = useRouter();
+const moreOpen = ref(false);
+router.afterEach(() => (moreOpen.value = false));
+function imported(t: { id: string; sessionId: string }[]) {
+  pendingImport.value = null;
+  if (t.length === 1) void router.push(`/essais/${t[0]!.id}`);
+  else if (t.length) void router.push(`/seances/${t[0]!.sessionId}`);
+}
 const online = ref(navigator.onLine);
 window.addEventListener('online', () => (online.value = true));
 window.addEventListener('offline', () => (online.value = false));
@@ -36,24 +47,27 @@ const jobs = computed(() => [...state.jobs.values()]);
         <span>Foulée</span>
       </RouterLink>
       <nav class="mainnav" aria-label="Navigation principale">
+        <RouterLink to="/" exact-active-class="router-link-active">Vidéos</RouterLink>
         <RouterLink to="/athletes">Athlètes</RouterLink>
-        <RouterLink to="/seances">Séances</RouterLink>
         <RouterLink to="/comparer">Comparer</RouterLink>
-        <RouterLink to="/replay">Replay</RouterLink>
-        <RouterLink to="/normes">Normes</RouterLink>
-        <RouterLink to="/coffre">Coffre</RouterLink>
       </nav>
       <div class="topbar-right">
         <span v-if="!online" class="pill warn" title="Aucune connexion : tout fonctionne quand même">Hors ligne</span>
-        <button
-          class="btn ghost small"
-          :aria-pressed="settings.terrain"
-          title="Mode Terrain : gros boutons, utilisable d’une main"
-          @click="settings.terrain = !settings.terrain"
-        >
-          {{ settings.terrain ? 'Terrain' : 'Analyse' }}
-        </button>
-        <button class="btn ghost small" title="Verrouiller l’écran" aria-label="Verrouiller l’écran" @click="locked = true">Verrouiller</button>
+        <VideoPicker label="＋ Ajouter une vidéo" @picked="quickImport" />
+        <div class="more">
+          <button class="btn ghost" :aria-expanded="moreOpen" aria-haspopup="true" @click="moreOpen = !moreOpen">Plus</button>
+          <div v-if="moreOpen" class="more-menu" role="menu" @click="moreOpen = false">
+            <RouterLink to="/seances" role="menuitem">Séances d’entraînement</RouterLink>
+            <RouterLink to="/replay" role="menuitem">Revoir mon geste avec un décalage</RouterLink>
+            <RouterLink to="/normes" role="menuitem">Normes par catégorie</RouterLink>
+            <RouterLink to="/coffre" role="menuitem">Sauvegarde et données</RouterLink>
+            <hr />
+            <button role="menuitemcheckbox" :aria-checked="settings.terrain" @click="settings.terrain = !settings.terrain">
+              Gros boutons (mode terrain) : {{ settings.terrain ? 'activé' : 'désactivé' }}
+            </button>
+            <button role="menuitem" @click="locked = true">Verrouiller l’écran</button>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -61,10 +75,6 @@ const jobs = computed(() => [...state.jobs.values()]);
       Une nouvelle version de Foulée est disponible.
       <button class="btn small" @click="applyUpdate">Mettre à jour</button>
       <button class="btn ghost small" @click="needRefresh = false">Plus tard</button>
-    </div>
-    <div v-else-if="offlineReady" class="banner ok">
-      Foulée est prête à fonctionner sans réseau.
-      <button class="btn ghost small" @click="offlineReady = false">OK</button>
     </div>
     <div v-if="state.error && !state.failed" class="banner warn">{{ state.error }}</div>
     <div v-if="state.notice" class="banner info">{{ state.notice }}</div>
@@ -90,6 +100,7 @@ const jobs = computed(() => [...state.jobs.values()]);
       </div>
     </div>
 
+    <ImportDialog v-if="pendingImport" :session-id="pendingImport.sessionId" :files="pendingImport.files" @done="imported" @cancel="pendingImport = null" />
     <LockOverlay v-if="locked" @unlock="locked = false" />
   </div>
 </template>

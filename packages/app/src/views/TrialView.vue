@@ -54,7 +54,9 @@ const analysis = ref<Analysis>(analysisOf(props.id));
 const player = ref<InstanceType<typeof FramePlayer>>();
 const timeline = shallowRef<FrameTimeline | null>(null);
 const currentFrame = ref(0);
-const tab = ref<'reperes' | 'epreuve' | 'mesures' | 'auto' | 'normes' | 'kino' | 'rapport' | 'infos'>('reperes');
+const tab = ref<'reperes' | 'epreuve' | 'mesures' | 'auto' | 'kino' | 'rapport' | 'infos'>('epreuve');
+const TOOLS = ['reperes', 'auto', 'kino'];
+const inTools = computed(() => TOOLS.includes(tab.value));
 
 watch(
   () => props.id,
@@ -240,11 +242,11 @@ async function trash() {
       <div>
         <h1>
           {{ athlete ? athleteName(athlete) : '—' }} · {{ disciplineLabel(trial.discipline) }}
-          <span class="muted">essai {{ trial.number }}</span>
         </h1>
         <div class="small muted">
-          <RouterLink :to="`/seances/${trial.sessionId}`">{{ session?.title || formatDate(session?.date ?? '') }}</RouterLink>
-          <template v-if="athlete"> · <RouterLink :to="`/athletes/${athlete.id}`">fiche athlète</RouterLink></template>
+          Essai {{ trial.number }} ·
+          <RouterLink :to="`/seances/${trial.sessionId}`">{{ formatDate(session?.date ?? '') }}</RouterLink>
+          <template v-if="athlete"> · <RouterLink :to="`/athletes/${athlete.id}`">voir {{ athlete.firstName || athleteName(athlete) }}</RouterLink></template>
         </div>
       </div>
       <div class="row">
@@ -253,8 +255,6 @@ async function trash() {
         <button class="btn ghost small" :aria-pressed="trial.favorite" @click="patch({ favorite: !trial.favorite })">★</button>
       </div>
     </div>
-
-    <TagEditor :model-value="trial.tags" quick :derived="derivedTags(trial, media?.nominalFps)" @update:model-value="(tags) => patch({ tags })" />
 
     <div class="layout">
       <div class="main">
@@ -278,15 +278,17 @@ async function trash() {
         />
       </div>
       <aside class="side card">
-        <div class="tabs">
-          <button :class="{ active: tab === 'reperes' }" @click="tab = 'reperes'">Repères</button>
-          <button :class="{ active: tab === 'epreuve' }" @click="tab = 'epreuve'">Épreuve</button>
-          <button :class="{ active: tab === 'mesures' }" @click="tab = 'mesures'">Mesures</button>
-          <button :class="{ active: tab === 'auto' }" @click="tab = 'auto'">Auto</button>
-          <button :class="{ active: tab === 'normes' }" @click="tab = 'normes'">Normes</button>
-          <button :class="{ active: tab === 'kino' }" @click="tab = 'kino'">Kinogramme</button>
-          <button :class="{ active: tab === 'rapport' }" @click="tab = 'rapport'">Rapports</button>
-          <button :class="{ active: tab === 'infos' }" @click="tab = 'infos'">Essai</button>
+        <div class="tabs" role="tablist">
+          <button role="tab" :aria-selected="tab === 'epreuve'" :class="{ active: tab === 'epreuve' }" @click="tab = 'epreuve'">Mesurer</button>
+          <button role="tab" :aria-selected="tab === 'mesures'" :class="{ active: tab === 'mesures' }" @click="tab = 'mesures'">Résultats</button>
+          <button role="tab" :aria-selected="tab === 'rapport'" :class="{ active: tab === 'rapport' }" @click="tab = 'rapport'">Rapport</button>
+          <button role="tab" :aria-selected="inTools" :class="{ active: inTools }" @click="inTools || (tab = 'reperes')">Outils</button>
+          <button role="tab" :aria-selected="tab === 'infos'" :class="{ active: tab === 'infos' }" @click="tab = 'infos'">Infos</button>
+        </div>
+        <div v-if="inTools" class="row subtabs">
+          <button class="btn small" :class="tab === 'reperes' ? '' : 'secondary'" @click="tab = 'reperes'">Repères libres</button>
+          <button class="btn small" :class="tab === 'auto' ? '' : 'secondary'" @click="tab = 'auto'">Suivi automatique</button>
+          <button class="btn small" :class="tab === 'kino' ? '' : 'secondary'" @click="tab = 'kino'">Kinogramme</button>
         </div>
         <div v-if="tab === 'reperes'" class="stack">
           <div class="row">
@@ -298,7 +300,7 @@ async function trash() {
               <button v-else class="btn secondary small" :title="`${t.label} (touche ${t.key})`" @click="mark(t.id)">{{ t.label }}</button>
             </template>
           </div>
-          <p class="small muted">Marque l’image affichée. Les temps de section sont dans l’onglet Mesures.</p>
+          <p class="small muted">Marque l’image affichée avec un repère libre. Les temps de section sont dans l’onglet Résultats.</p>
           <ol v-if="analysis.events.length" class="list events">
             <li v-for="(ev, i) in analysis.events" :key="ev.id" class="list-item">
               <button class="linklike grow" @click="player?.seek(ev.frame)">
@@ -364,7 +366,6 @@ async function trash() {
           @add-events="addEvents"
           @seek="(f) => player?.seek(f)"
         />
-        <NormBox v-else-if="tab === 'normes'" :trial="trial" :analysis="analysis" :fps="fps" />
         <KinogramPanel
           v-else-if="tab === 'kino'"
           :analysis="analysis"
@@ -374,6 +375,7 @@ async function trash() {
           :grab="grabFrame"
         />
         <div v-else-if="tab === 'mesures'" class="stack measures">
+          <NormBox :trial="trial" :analysis="analysis" :fps="fps" />
           <p class="small muted">
             Mesures <strong>indicatives</strong> : valables dans le plan de l’étalon, caméra fixe et à peu près perpendiculaire à la piste.
             Les marges tiennent compte du pointage et de la durée d’une image.
@@ -432,6 +434,7 @@ async function trash() {
           </section>
         </div>
         <div v-else class="stack">
+          <TagEditor :model-value="trial.tags" quick :derived="derivedTags(trial, media?.nominalFps)" @update:model-value="(tags) => patch({ tags })" />
           <label class="field">
             Athlète
             <select :value="trial.athleteId" @change="patch({ athleteId: ($event.target as HTMLSelectElement).value })">

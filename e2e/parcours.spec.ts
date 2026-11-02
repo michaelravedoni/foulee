@@ -21,23 +21,24 @@ async function waitFrame(page: Page, n: number) {
 
 test('séance complète : athlète, séance, import, image par image, dessin, comparaison, export', async ({ page }) => {
   await page.goto('./');
-  await expect(page.getByRole('heading', { name: 'Bonjour' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Mes vidéos' })).toBeVisible();
 
   // Athlète
   await page.getByRole('navigation').getByRole('link', { name: 'Athlètes' }).click();
-  await page.getByRole('button', { name: '＋ Ajouter' }).click();
+  await page.getByRole('button', { name: '＋ Nouvel athlète' }).click();
   await page.getByLabel('Prénom').fill('Léa');
   await page.getByLabel('Nom', { exact: true }).fill('Rey');
   await page.getByRole('button', { name: 'Créer' }).click();
   await expect(page.getByRole('heading', { name: /Léa Rey/ })).toBeVisible();
 
   // Séance + import
-  await page.getByRole('navigation').getByRole('link', { name: 'Séances' }).click();
+  await page.getByRole('button', { name: 'Plus' }).click();
+  await page.getByRole('menuitem', { name: /Séances/ }).click();
   await page.getByRole('button', { name: '＋ Nouvelle séance' }).click();
-  await page.locator('input[type=file]').setInputFiles([VIDEO, VIDEO]);
+  await page.getByRole('main').locator('input[type=file]').setInputFiles([VIDEO, VIDEO]);
   await page.getByLabel('Athlète').selectOption({ label: 'Léa Rey' });
   await page.getByLabel('Épreuve').selectOption('100m');
-  await page.getByRole('button', { name: 'Importer', exact: true }).click();
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
   await expect(page.locator('.trial-row')).toHaveCount(2);
 
   // Lecteur image par image
@@ -98,7 +99,7 @@ test('séance complète : athlète, séance, import, image par image, dessin, co
   await page.locator('.hud-tc').click(); // image → h:m:s
   await expect(page.locator('.hud-tc')).toHaveText('0:00,083');
   await page.getByRole('button', { name: 'Départ', exact: true }).click();
-  await expect(page.locator('.events li')).toHaveCount(1);
+  await expect(page.getByTestId('sprint-marks').locator('li')).toHaveCount(1);
 
   // Dessin : une ligne, annuler, rétablir
   await page.getByRole('button', { name: 'Ligne' }).click();
@@ -114,7 +115,8 @@ test('séance complète : athlète, séance, import, image par image, dessin, co
   await page.getByRole('button', { name: 'Rétablir' }).click();
   await expect(page.locator('svg.draw path')).toHaveCount(1);
 
-  // Tag rapide
+  // Tag rapide (onglet Infos)
+  await page.getByRole('tab', { name: 'Infos', exact: true }).click();
   await page.getByRole('button', { name: 'essai valide' }).click();
   await expect(page.getByRole('button', { name: 'essai valide' })).toHaveAttribute('aria-pressed', 'true');
 
@@ -126,7 +128,7 @@ test('séance complète : athlète, séance, import, image par image, dessin, co
   await page.waitForTimeout(300);
   await page.keyboard.press('Shift+ArrowRight');
   await expect(page.locator('svg.draw path')).toHaveCount(1);
-  await expect(page.locator('.events li')).toHaveCount(1);
+  await expect(page.getByTestId('sprint-marks').locator('li')).toHaveCount(1);
 
   // Mesures : étalon de 10 m, longueur calibrée, trajectoire, chrono par sections
   page.once('dialog', (d) => void d.accept('10'));
@@ -142,26 +144,27 @@ test('séance complète : athlète, séance, import, image par image, dessin, co
   for (let i = 0; i < 3; i++) {
     await page.mouse.click(sb.x + sb.width * (0.3 + 0.05 * i), sb.y + sb.height * 0.4);
   }
-  await page.getByRole('button', { name: 'Mesures', exact: true }).click();
+  await page.getByRole('tab', { name: 'Résultats', exact: true }).click();
   await expect(page.getByText(/Trajectoire 1 · 3 points/)).toBeVisible();
   await expect(page.getByText(/px\/m, incertitude/)).toBeVisible();
-  await page.getByRole('button', { name: 'Repères', exact: true }).click();
+  await page.getByRole('tab', { name: 'Outils', exact: true }).click();
   await page.getByRole('button', { name: 'Arrivée', exact: true }).click();
-  await page.getByRole('button', { name: 'Mesures', exact: true }).click();
+  await page.getByRole('tab', { name: 'Résultats', exact: true }).click();
   await expect(page.locator('table.sections tbody tr')).toHaveCount(1);
   await expect(page.locator('table.sections tbody tr td.mono').first()).toContainText('±');
 
   // Épreuve : splits d'un 100 m avec contrôles de plausibilité
-  await page.getByRole('button', { name: 'Épreuve', exact: true }).click();
+  await page.getByRole('tab', { name: 'Mesurer', exact: true }).click();
   await page.getByRole('button', { name: '30 m', exact: true }).click();
   await expect(page.locator('.sprint table.tbl').first()).toBeVisible();
   await expect(page.locator('.sprint .checks')).toContainText('improbable'); // 30 m en quelques images : le moteur alerte
   await page.getByRole('button', { name: '30 m' }).click(); // remplace, ne duplique pas
-  await page.getByRole('button', { name: 'Repères', exact: true }).click();
+  await page.getByRole('tab', { name: 'Outils', exact: true }).click();
   await expect(page.locator('.events li')).toHaveCount(3); // départ, arrivée, un seul 30 m
 
   // Départ au son : le coup est à 1,0 s dans la vidéo de test (image 120 à 120 i/s)
-  await page.getByRole('button', { name: 'Épreuve', exact: true }).click();
+  await page.getByRole('tab', { name: 'Mesurer', exact: true }).click();
+  await page.getByText('Outils avancés').click();
   await page.getByRole('button', { name: 'Détecter le départ' }).click();
   await expect(page.getByText(/le plus fort/)).toBeVisible({ timeout: 20_000 });
   await page.getByRole('button', { name: 'Utiliser comme départ' }).first().click();
@@ -169,16 +172,17 @@ test('séance complète : athlète, séance, import, image par image, dessin, co
 
   // Supprimer un repère depuis le panneau
   await page.getByRole('button', { name: /Supprimer Passage repère/ }).first().click();
-  await page.getByRole('button', { name: 'Repères', exact: true }).click();
+  await page.getByRole('tab', { name: 'Outils', exact: true }).click();
   await expect(page.locator('.events li')).toHaveCount(2);
 
   // Kinogramme à partir des repères
+  await page.getByRole('tab', { name: 'Outils', exact: true }).click();
   await page.getByRole('button', { name: 'Kinogramme', exact: true }).click();
   await page.getByRole('button', { name: /Générer/ }).click();
   await expect(page.getByRole('button', { name: 'Télécharger en PNG' })).toBeVisible({ timeout: 20_000 });
 
   // Rapports : deux PDF et un CSV, générés sur l'appareil
-  await page.getByRole('button', { name: 'Rapports', exact: true }).click();
+  await page.getByRole('tab', { name: 'Rapport', exact: true }).click();
   for (const [button, suffix] of [['PDF athlète', 'athlete.pdf'], ['PDF coach', 'coach.pdf']] as const) {
     const [download] = await Promise.all([page.waitForEvent('download', { timeout: 30_000 }), page.getByRole('button', { name: button }).click()]);
     expect(download.suggestedFilename()).toContain(suffix);
@@ -210,7 +214,7 @@ test('séance complète : athlète, séance, import, image par image, dessin, co
   // Export du coffre
   await page.goto('./#/coffre');
   const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Exporter sans les vidéos' }).click();
+  await page.getByRole('button', { name: 'Copie légère (sans les vidéos)' }).click();
   const file = await download;
   expect(file.suggestedFilename()).toMatch(/^foulee-coffre-.*-sans-videos\.zip$/);
 });
@@ -224,22 +228,26 @@ test('fonctionne hors-ligne après le premier chargement', async ({ page, contex
   await page.evaluate(async () => navigator.serviceWorker.ready);
   await context.setOffline(true);
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Bonjour' })).toBeVisible();
-  await page.getByRole('navigation').getByRole('link', { name: 'Replay' }).click();
+  await expect(page.getByRole('heading', { name: 'Mes vidéos' })).toBeVisible();
+  await page.getByRole('button', { name: 'Plus' }).click();
+  await page.getByRole('menuitem', { name: /Revoir mon geste/ }).click();
   await expect(page.getByRole('heading', { name: 'Replay différé' })).toBeVisible();
   await context.setOffline(false);
 });
 
 test('le mode Terrain ne casse pas la mise en page', async ({ page }) => {
   await page.goto('./');
-  await expect(page.getByRole('heading', { name: 'Bonjour' })).toBeVisible();
-  await page.getByRole('button', { name: 'Analyse' }).click();
-  await expect(page.getByRole('button', { name: 'Terrain' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Mes vidéos' })).toBeVisible();
+  await page.getByRole('button', { name: 'Plus' }).click();
+  await page.getByRole('menuitemcheckbox').click();
+  await page.getByRole('button', { name: 'Plus' }).click();
+  await expect(page.getByRole('menuitemcheckbox')).toContainText('activé');
+  await page.getByRole('button', { name: 'Plus' }).click();
   const width = await page.evaluate(() => [innerWidth, document.documentElement.getBoundingClientRect().width]);
   expect(width[1]).toBe(width[0]);
   // le mode persiste après rechargement
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Bonjour' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Mes vidéos' })).toBeVisible();
   const again = await page.evaluate(() => [innerWidth, document.documentElement.getBoundingClientRect().width, document.documentElement.getBoundingClientRect().height]);
   expect(again[1]).toBe(again[0]);
   expect(again[2]).toBeGreaterThan(100);
@@ -252,7 +260,7 @@ test('si OPFS ne répond pas, le coffre bascule sur IndexedDB et fonctionne', as
   });
   await page.goto('./#/athletes');
   await expect(page.getByText(/IndexedDB à la place/)).toBeVisible({ timeout: 30_000 });
-  await page.getByRole('button', { name: '＋ Ajouter' }).click();
+  await page.getByRole('button', { name: '＋ Nouvel athlète' }).click();
   await page.getByLabel('Prénom').fill('Zoé');
   await page.getByRole('button', { name: 'Créer' }).click();
   await expect(page.getByRole('heading', { name: /Zoé/ })).toBeVisible();
@@ -313,9 +321,9 @@ test('sauvegarde chiffrée sur WebDAV, puis restauration sur un nouvel appareil'
   const a = await ctx1.newPage();
   await a.route('https://dav.test/**', handler);
   await a.goto('./');
-  await expect(a.getByRole('heading', { name: 'Bonjour' })).toBeVisible();
+  await expect(a.getByRole('heading', { name: 'Mes vidéos' })).toBeVisible();
   await a.getByRole('navigation').getByRole('link', { name: 'Athlètes' }).click();
-  await a.getByRole('button', { name: '＋ Ajouter' }).click();
+  await a.getByRole('button', { name: '＋ Nouvel athlète' }).click();
   await a.getByLabel('Prénom').fill('Léa');
   await a.getByLabel('Nom', { exact: true }).fill('Secret');
   await a.getByRole('button', { name: 'Créer' }).click();
@@ -342,7 +350,7 @@ test('sauvegarde chiffrée sur WebDAV, puis restauration sur un nouvel appareil'
   const b = await ctx2.newPage();
   await b.route('https://dav.test/**', handler);
   await b.goto('./');
-  await expect(b.getByRole('heading', { name: 'Bonjour' })).toBeVisible();
+  await expect(b.getByRole('heading', { name: 'Mes vidéos' })).toBeVisible();
   await b.goto('./#/sauvegardes');
   await b.getByRole('button', { name: /Ajouter une destination/ }).click();
   await b.getByLabel('Adresse du dossier').fill(URL_DAV);
@@ -366,21 +374,22 @@ test('sauvegarde chiffrée sur WebDAV, puis restauration sur un nouvel appareil'
 test('saut en longueur : gabarit, mesures et rapport', async ({ page }) => {
   await page.goto('./');
   await page.getByRole('navigation').getByRole('link', { name: 'Athlètes' }).click();
-  await page.getByRole('button', { name: '＋ Ajouter' }).click();
+  await page.getByRole('button', { name: '＋ Nouvel athlète' }).click();
   await page.getByLabel('Prénom').fill('Max');
   await page.getByLabel('Nom', { exact: true }).fill('Saut');
   await page.getByRole('button', { name: 'Créer' }).click();
-  await page.getByRole('navigation').getByRole('link', { name: 'Séances' }).click();
+  await page.getByRole('button', { name: 'Plus' }).click();
+  await page.getByRole('menuitem', { name: /Séances/ }).click();
   await page.getByRole('button', { name: '＋ Nouvelle séance' }).click();
-  await page.locator('input[type=file]').setInputFiles([VIDEO]);
+  await page.getByRole('main').locator('input[type=file]').setInputFiles([VIDEO]);
   await page.getByLabel('Athlète').selectOption({ label: 'Max Saut' });
   await page.getByLabel('Épreuve').selectOption('longueur');
-  await page.getByRole('button', { name: 'Importer', exact: true }).click();
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
   await expect(page.getByText(/240 images · 120 i\/s/)).toBeVisible({ timeout: 20_000 });
   await page.locator('.hud-tc').click();
   await waitFrame(page, 0);
 
-  await page.getByRole('button', { name: 'Épreuve', exact: true }).click();
+  await page.getByRole('tab', { name: 'Mesurer', exact: true }).click();
   await expect(page.getByRole('heading', { name: /Gabarit du longueur/i })).toBeVisible();
 
   // Appel (planche, 0 m), décollage, réception à 6,20 m
@@ -397,7 +406,7 @@ test('saut en longueur : gabarit, mesures et rapport', async ({ page }) => {
   await expect(page.locator('.jump table.tbl').first()).toContainText('6,20');
   await expect(page.locator('.jump table.tbl').first()).toContainText('indicatif');
 
-  await page.getByRole('button', { name: 'Rapports', exact: true }).click();
+  await page.getByRole('tab', { name: 'Rapport', exact: true }).click();
   for (const [button, suffix] of [['PDF athlète', 'athlete.pdf'], ['PDF coach', 'coach.pdf']] as const) {
     const [download] = await Promise.all([page.waitForEvent('download', { timeout: 30_000 }), page.getByRole('button', { name: button }).click()]);
     expect(download.suggestedFilename()).toContain(suffix);
@@ -409,21 +418,22 @@ test('saut en longueur : gabarit, mesures et rapport', async ({ page }) => {
 test('marteau : tours, gabarit et rapport', async ({ page }) => {
   await page.goto('./');
   await page.getByRole('navigation').getByRole('link', { name: 'Athlètes' }).click();
-  await page.getByRole('button', { name: '＋ Ajouter' }).click();
+  await page.getByRole('button', { name: '＋ Nouvel athlète' }).click();
   await page.getByLabel('Prénom').fill('Tom');
   await page.getByLabel('Nom', { exact: true }).fill('Marteau');
   await page.getByRole('button', { name: 'Créer' }).click();
-  await page.getByRole('navigation').getByRole('link', { name: 'Séances' }).click();
+  await page.getByRole('button', { name: 'Plus' }).click();
+  await page.getByRole('menuitem', { name: /Séances/ }).click();
   await page.getByRole('button', { name: '＋ Nouvelle séance' }).click();
-  await page.locator('input[type=file]').setInputFiles([VIDEO]);
+  await page.getByRole('main').locator('input[type=file]').setInputFiles([VIDEO]);
   await page.getByLabel('Athlète').selectOption({ label: 'Tom Marteau' });
   await page.getByLabel('Épreuve').selectOption('marteau');
-  await page.getByRole('button', { name: 'Importer', exact: true }).click();
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
   await expect(page.getByText(/240 images · 120 i\/s/)).toBeVisible({ timeout: 20_000 });
   await page.locator('.hud-tc').click();
   await waitFrame(page, 0);
 
-  await page.getByRole('button', { name: 'Épreuve', exact: true }).click();
+  await page.getByRole('tab', { name: 'Mesurer', exact: true }).click();
   await expect(page.getByRole('heading', { name: /Gabarit du marteau/i })).toBeVisible();
   for (const step of [0, 60, 60, 50]) {
     for (let i = 0; i < step; i++) await page.keyboard.press('ArrowRight');
@@ -434,7 +444,7 @@ test('marteau : tours, gabarit et rapport', async ({ page }) => {
   await expect(page.locator('.throw table.tbl').nth(1)).toContainText('Tour 3');
   await expect(page.getByText(/Sans étalon/)).toBeVisible();
 
-  await page.getByRole('button', { name: 'Rapports', exact: true }).click();
+  await page.getByRole('tab', { name: 'Rapport', exact: true }).click();
   for (const [button, suffix] of [['PDF athlète', 'athlete.pdf'], ['PDF coach', 'coach.pdf']] as const) {
     const [download] = await Promise.all([page.waitForEvent('download', { timeout: 30_000 }), page.getByRole('button', { name: button }).click()]);
     expect(download.suggestedFilename()).toContain(suffix);
@@ -446,15 +456,16 @@ test('marteau : tours, gabarit et rapport', async ({ page }) => {
 test('suivi automatique d’un point et onglet Auto', async ({ page }) => {
   await page.goto('./');
   await page.getByRole('navigation').getByRole('link', { name: 'Athlètes' }).click();
-  await page.getByRole('button', { name: '＋ Ajouter' }).click();
+  await page.getByRole('button', { name: '＋ Nouvel athlète' }).click();
   await page.getByLabel('Prénom').fill('Ana');
   await page.getByLabel('Nom', { exact: true }).fill('Suivi');
   await page.getByRole('button', { name: 'Créer' }).click();
-  await page.getByRole('navigation').getByRole('link', { name: 'Séances' }).click();
+  await page.getByRole('button', { name: 'Plus' }).click();
+  await page.getByRole('menuitem', { name: /Séances/ }).click();
   await page.getByRole('button', { name: '＋ Nouvelle séance' }).click();
-  await page.locator('input[type=file]').setInputFiles([VIDEO]);
+  await page.getByRole('main').locator('input[type=file]').setInputFiles([VIDEO]);
   await page.getByLabel('Athlète').selectOption({ label: 'Ana Suivi' });
-  await page.getByRole('button', { name: 'Importer', exact: true }).click();
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
   await expect(page.getByText(/240 images · 120 i\/s/)).toBeVisible({ timeout: 20_000 });
   await page.locator('.hud-tc').click();
   await waitFrame(page, 0);
@@ -467,7 +478,8 @@ test('suivi automatique d’un point et onglet Auto', async ({ page }) => {
   await expect(page.getByText(/point(s)? ajouté/)).toBeVisible({ timeout: 30_000 });
 
   // L'onglet Auto propose la détection ; sans modèle téléchargé il ne bloque rien.
-  await page.getByRole('button', { name: 'Auto', exact: true }).click();
+  await page.getByRole('tab', { name: 'Outils', exact: true }).click();
+  await page.getByRole('button', { name: 'Suivi automatique', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Détecter le corps et les appuis' })).toBeEnabled();
 });
 
@@ -483,30 +495,32 @@ test('normes : import d’un tableau, vérification, comparaison et progression'
   };
   await page.goto('./');
   await page.getByRole('navigation').getByRole('link', { name: 'Athlètes' }).click();
-  await page.getByRole('button', { name: '＋ Ajouter' }).click();
+  await page.getByRole('button', { name: '＋ Nouvel athlète' }).click();
   await page.getByLabel('Prénom').fill('Noé');
   await page.getByLabel('Nom', { exact: true }).fill('Norme');
   await page.getByRole('button', { name: 'Créer' }).click();
   await page.getByLabel('Date de naissance').fill(`${year - 15}-06-15`);
   await page.getByTestId('athlete-sex').selectOption('M');
 
-  await page.getByRole('navigation').getByRole('link', { name: 'Normes' }).click();
+  await page.getByRole('button', { name: 'Plus' }).click();
+  await page.getByRole('menuitem', { name: /Normes/ }).click();
   await page.getByTestId('norm-file').setInputFiles({ name: 'mauvais.json', mimeType: 'application/json', buffer: Buffer.from('{"schema":"norms@2"}') });
   await expect(page.getByRole('status')).toContainText('schema');
   await page.getByTestId('norm-file').setInputFiles({ name: 'norme.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(table)) });
   await expect(page.getByRole('heading', { name: 'Tableau fictif (test)' })).toBeVisible();
   await expect(page.getByText('Valeurs non vérifiées à la source.')).toBeVisible();
 
-  await page.getByRole('navigation').getByRole('link', { name: 'Séances' }).click();
+  await page.getByRole('button', { name: 'Plus' }).click();
+  await page.getByRole('menuitem', { name: /Séances/ }).click();
   await page.getByRole('button', { name: '＋ Nouvelle séance' }).click();
-  await page.locator('input[type=file]').setInputFiles([VIDEO]);
+  await page.getByRole('main').locator('input[type=file]').setInputFiles([VIDEO]);
   await page.getByLabel('Athlète').selectOption({ label: 'Noé Norme' });
   await page.getByLabel('Épreuve').selectOption('longueur');
-  await page.getByRole('button', { name: 'Importer', exact: true }).click();
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
   await expect(page.getByText(/240 images · 120 i\/s/)).toBeVisible({ timeout: 20_000 });
   await page.locator('.hud-tc').click();
   await waitFrame(page, 0);
-  await page.getByRole('button', { name: 'Épreuve', exact: true }).click();
+  await page.getByRole('tab', { name: 'Mesurer', exact: true }).click();
   for (let i = 0; i < 20; i++) await page.keyboard.press('ArrowRight');
   await waitFrame(page, 20);
   await page.getByRole('button', { name: 'Appel droit' }).click();
@@ -517,13 +531,14 @@ test('normes : import d’un tableau, vérification, comparaison et progression'
   await page.getByRole('button', { name: 'Réception', exact: true }).click();
   await expect(page.getByText('Longueur du saut')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Normes', exact: true }).click();
+  await page.getByRole('tab', { name: 'Résultats', exact: true }).click();
   const box = page.getByTestId('norm-box');
   await expect(box).toContainText('niveau atteint : Bronze');
   await expect(box).toContainText('prochain : Argent');
   await expect(box).toContainText('valeurs non vérifiées à la source');
 
-  // Progression sur la fiche de l'athlète
+  // Progression sur la fiche de l'athlète (laisse l'enregistrement différé se terminer)
+  await page.waitForTimeout(800);
   await page.getByRole('navigation').getByRole('link', { name: 'Athlètes' }).click();
   await page.getByText('Noé Norme').first().click();
   await expect(page.getByTestId('progress-longueur')).toContainText('Record 6,20 m');

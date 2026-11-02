@@ -35,7 +35,7 @@ async function create() {
       <input v-model="query" type="search" placeholder="Rechercher (lieu, date, athlète, tag…)" aria-label="Rechercher" style="max-width: 360px" />
       <button class="btn ghost small" :aria-pressed="onlyFav" @click="onlyFav = !onlyFav">★ Favoris</button>
     </div>
-    <p v-if="!filtered.length" class="empty">{{ sessions.length ? 'Aucun résultat.' : 'Aucune séance pour l’instant.' }}</p>
+    <p v-if="!filtered.length" class="empty">{{ sessions.length ? 'Aucun résultat.' : 'Aucune séance. Une séance regroupe les vidéos d’un même entraînement ; elle est créée toute seule quand tu ajoutes une vidéo.' }}</p>
     <ul class="list">
       <li v-for="s in filtered" :key="s.id">
         <RouterLink class="list-item" :to="`/seances/${s.id}`">

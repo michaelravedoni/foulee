@@ -72,6 +72,7 @@ h1 {
   gap: 12px;
   padding: calc(12px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
   background: var(--bg);
+  flex-wrap: wrap;
 }
 .brand {
   display: flex;
@@ -83,23 +84,11 @@ h1 {
   color: var(--text);
   text-decoration: none;
 }
-/* Navigation : rangée de liens texte, en bas à droite (pas de barre supérieure collante). */
+/* Barre du haut : logo, trois entrées, bouton principal « Ajouter une vidéo », menu « Plus ». */
 .mainnav {
-  position: fixed;
-  right: 0;
-  bottom: 0;
-  z-index: 20;
   display: flex;
   gap: 4px;
-  justify-content: flex-end;
-  max-width: 100%;
-  overflow-x: auto;
-  scrollbar-width: none;
-  padding: 0 max(12px, env(safe-area-inset-right)) env(safe-area-inset-bottom) 12px;
-  background: var(--bg);
-  border-top: 1px solid var(--border);
-  border-left: 1px solid var(--border);
-  border-top-left-radius: var(--radius-md);
+  order: 2;
 }
 .mainnav a {
   padding: 8px 12px;
@@ -108,7 +97,6 @@ h1 {
   text-decoration: none;
   white-space: nowrap;
   font-weight: 450;
-  font-size: 14px;
   min-height: var(--tap);
   display: flex;
   align-items: center;
@@ -120,11 +108,51 @@ h1 {
   text-decoration-thickness: 1px;
   text-underline-offset: 6px;
 }
+.more {
+  position: relative;
+}
+.more-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 30;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.more-menu a,
+.more-menu button {
+  appearance: none;
+  background: none;
+  border: 0;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  text-decoration: none;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  min-height: var(--tap);
+  cursor: pointer;
+}
+.more-menu a:hover,
+.more-menu button:hover {
+  background: var(--surface-raised);
+}
+.more-menu hr {
+  border: 0;
+  border-top: 1px solid var(--hairline);
+  margin: 4px 0;
+}
 .topbar-right {
   display: flex;
   gap: 6px;
   align-items: center;
   margin-left: auto;
+  order: 3;
 }
 
 .content {
@@ -132,7 +160,7 @@ h1 {
   width: 100%;
   max-width: 1400px;
   margin: 0 auto;
-  padding: 16px max(16px, env(safe-area-inset-right)) calc(var(--tap) + 32px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  padding: 16px max(16px, env(safe-area-inset-right)) calc(32px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
 }
 
 .banner {
@@ -506,4 +534,27 @@ html.terrain .swatch {
 
 html.terrain .scrub {
   height: 52px;
+}
+
+/* Consignes pas à pas et résultat principal d'un panneau de mesure. */
+.howto {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+}
+.bigresult {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 2.2rem;
+  line-height: 1.1;
+}
+details.adv > summary,
+.subtabs + * {
+  cursor: pointer;
+}
+.subtabs {
+  margin-bottom: 8px;
 }

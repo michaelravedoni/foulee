@@ -108,24 +108,24 @@ async function buildProxies() {
 <template>
   <section class="stack">
     <div class="spread">
-      <h1>Coffre</h1>
-      <RouterLink class="btn secondary small" to="/sauvegardes">Sauvegardes et restauration →</RouterLink>
+      <h1>Sauvegarde et données</h1>
+      <RouterLink class="btn secondary small" to="/sauvegardes">Sauvegarde automatique (cloud, disque) →</RouterLink>
     </div>
     <p class="muted">
-      Toutes les données sont dans un coffre au format ouvert, sur cet appareil ({{ state.providerName }}). Exporte-le
-      régulièrement : l’archive ZIP se relit sans l’application et se réimporte sur un autre appareil.
+      Tes vidéos et tes mesures sont enregistrées uniquement sur cet appareil. Fais régulièrement une copie de sécurité :
+      le fichier ZIP se relit sans l’application et se remet sur un autre appareil.
     </p>
     <div class="grid">
       <div class="card stack">
-        <h2>Stockage</h2>
+        <h2>Place utilisée</h2>
         <div class="small">
-          {{ state.athletes.size }} athlètes · {{ state.sessions.size }} séances · {{ state.trials.size }} essais · {{ state.media.size }} vidéos ({{ formatBytes(mediaBytes) }})
+          {{ state.athletes.size }} athlète(s) · {{ state.sessions.size }} séance(s) · {{ state.trials.size }} essai(s) · {{ state.media.size }} vidéo(s) ({{ formatBytes(mediaBytes) }})
         </div>
         <div v-if="usage" class="small muted">Utilisé : {{ formatBytes(usage.usage) }} sur {{ formatBytes(usage.quota) }} disponibles</div>
         <progress v-if="usage && usage.quota" :value="usage.usage" :max="usage.quota"></progress>
         <div class="row">
-          <span class="pill" :class="state.persistent ? 'ok' : 'warn'">{{ state.persistent ? 'Persistant' : 'Non persistant' }}</span>
-          <button v-if="!state.persistent" class="btn ghost small" @click="persist">Demander la persistance</button>
+          <span class="pill" :class="state.persistent ? 'ok' : 'warn'">{{ state.persistent ? 'Données protégées' : 'Données non protégées' }}</span>
+          <button v-if="!state.persistent" class="btn ghost small" @click="persist">Protéger mes données</button>
         </div>
         <div v-if="state.loadErrors.length" class="small" style="color: var(--danger)">
           {{ state.loadErrors.length }} fichier(s) illisible(s) ignoré(s) :
@@ -135,27 +135,27 @@ async function buildProxies() {
         </div>
       </div>
       <div class="card stack">
-        <h2>Exporter</h2>
-        <button class="btn" :disabled="!!busy" @click="doExport(true)">Exporter tout (avec vidéos)</button>
-        <button class="btn secondary" :disabled="!!busy" @click="doExport(false)">Exporter sans les vidéos</button>
-        <p class="small muted">Les proxys basse résolution ne sont pas exportés : ils se recréent.</p>
+        <h2>Faire une copie</h2>
+        <button class="btn" :disabled="!!busy" @click="doExport(true)">Copie complète (avec vidéos)</button>
+        <button class="btn secondary" :disabled="!!busy" @click="doExport(false)">Copie légère (sans les vidéos)</button>
+        <p class="small muted">Les copies allégées des vidéos ne sont pas incluses : elles se recréent toutes seules.</p>
       </div>
       <div class="card stack">
-        <h2>Importer</h2>
-        <button class="btn secondary" :disabled="!!busy" @click="fileInput?.click()">Importer une archive…</button>
+        <h2>Restaurer une copie</h2>
+        <button class="btn secondary" :disabled="!!busy" @click="fileInput?.click()">Choisir un fichier ZIP…</button>
         <input ref="fileInput" class="sr-only" type="file" accept=".zip,application/zip" @change="doImport" />
-        <p class="small muted">Fusion : pour chaque fiche, la version la plus récente gagne. Chaque vidéo est vérifiée par son empreinte SHA-256.</p>
+        <p class="small muted">Rien n’est écrasé par erreur : pour chaque fiche, la version la plus récente est gardée. Chaque vidéo est vérifiée.</p>
       </div>
       <div class="card stack">
-        <h2>Réglages de cet appareil</h2>
-        <label class="row"><input v-model="settings.autoProxy" type="checkbox" /> Créer un proxy basse résolution à l’import (vidéos &gt; 1280 px)</label>
-        <button class="btn ghost small" :disabled="!!busy || !state.media.size" @click="buildProxies">Recréer tous les proxys</button>
-        <RouterLink to="/corbeille" class="btn ghost small">Corbeille</RouterLink>
-        <RouterLink to="/diagnostic" class="btn ghost small">Diagnostic et test du lecteur</RouterLink>
+        <h2>Réglages</h2>
+        <label class="row"><input v-model="settings.autoProxy" type="checkbox" /> Alléger les très grandes vidéos pour que la lecture soit fluide</label>
+        <button class="btn ghost small" :disabled="!!busy || !state.media.size" @click="buildProxies">Refaire toutes les copies allégées</button>
+        <RouterLink to="/corbeille" class="btn ghost small">Corbeille (éléments supprimés)</RouterLink>
+        <RouterLink to="/diagnostic" class="btn ghost small">Test du lecteur vidéo</RouterLink>
       </div>
     </div>
     <div v-if="busy" class="card">
-      {{ busy === 'export' ? 'Export' : 'Import' }} en cours…
+      {{ busy === 'export' ? 'Copie' : 'Restauration' }} en cours…
       <progress :value="progress" max="1"></progress>
     </div>
     <p v-if="message" class="banner info">{{ message }}</p>

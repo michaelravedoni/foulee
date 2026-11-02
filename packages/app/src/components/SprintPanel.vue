@@ -74,14 +74,17 @@ const label = (e: MarkedEvent) => eventLabel(e.type, e.side);
 
 <template>
   <div v-if="!spec" class="stack">
-    <p class="muted small">Les spécifications d’épreuve couvrent pour l’instant le sprint et les haies. Les sauts et lancers arrivent dans les phases suivantes ; les repères et les mesures libres restent disponibles.</p>
+    <p class="muted small">Cette épreuve n’a pas de gabarit de mesure. Utilise les repères libres dans l’onglet Outils.</p>
   </div>
   <div v-else class="stack sprint">
-    <p class="small muted">
-      {{ spec.label }} : marque l’image affichée. Les temps partent du départ ; chaque marge est d’au plus une image.
-    </p>
+    <ol class="howto small">
+      <li>Avance image par image avec les flèches ← → du clavier, ou en glissant la barre sous la vidéo, jusqu’à l’image où l’athlète part.</li>
+      <li>Appuie sur <strong>Départ</strong>.</li>
+      <li>Fais de même à chaque passage (10 m, 20 m…) puis à l’<strong>arrivée</strong> : le temps s’affiche dès qu’il y a un départ et une arrivée.</li>
+    </ol>
+    <p v-if="result?.total" class="bigresult" data-testid="sprint-total">{{ secs(result.total) }}</p>
     <section class="stack">
-      <h3>Départ et passages</h3>
+      <h3>Repères de la course</h3>
       <div class="row">
         <button class="btn secondary small" @click="emit('mark', 'depart')">Départ</button>
         <button
@@ -96,6 +99,8 @@ const label = (e: MarkedEvent) => eventLabel(e.type, e.side);
         </button>
       </div>
     </section>
+    <details class="stack adv">
+      <summary>Outils avancés : départ au son, appuis</summary>
     <section class="stack">
       <h3>Départ au son</h3>
       <div class="row">
@@ -122,11 +127,12 @@ const label = (e: MarkedEvent) => eventLabel(e.type, e.side);
         <button class="btn secondary small" title="Décollage droit (Maj+z)" @click="emit('mark', 'decollage', 'D')">Décollage D</button>
       </div>
     </section>
+    </details>
 
     <section class="stack">
       <h3>Repères posés</h3>
-      <p v-if="!analysis.events.length" class="small muted">Aucun repère.</p>
-      <ul v-else class="plain small">
+      <p v-if="!analysis.events.length" class="small muted">Aucun repère posé pour l’instant.</p>
+      <ul v-else class="plain small" data-testid="sprint-marks">
         <li v-for="e in analysis.events" :key="e.id" class="row">
           <button class="linklike grow" @click="emit('seek', e.frame)">
             {{ label(e) }}<template v-if="e.position !== undefined"> · {{ frNumber(e.position, 2) }} m</template>
@@ -138,14 +144,14 @@ const label = (e: MarkedEvent) => eventLabel(e.type, e.side);
     </section>
 
     <template v-if="result">
-      <ul v-if="result.checks.length" class="checks small">
+      <ul v-if="analysis.events.length && result.checks.length" class="checks small">
         <li v-for="(c, i) in result.checks" :key="i" :class="c.level">
           <strong>{{ c.level === 'alerte' ? 'Attention' : 'Info' }}</strong> · {{ c.message }}
         </li>
       </ul>
 
       <section class="stack">
-        <h3>Splits</h3>
+        <h3>Temps de passage</h3>
         <p v-if="!result.splits.length" class="small muted">Marque le départ puis au moins un passage ou l’arrivée.</p>
         <table v-else class="tbl small">
           <thead><tr><th>Section</th><th>Temps</th><th>Cumulé</th><th>Vitesse</th><th></th></tr></thead>
@@ -163,17 +169,17 @@ const label = (e: MarkedEvent) => eventLabel(e.type, e.side);
       </section>
 
       <section v-if="result.profile" class="stack">
-        <h3>Profil Vmax / tau <span class="tag-indic">indicatif</span></h3>
+        <h3>Vitesse maximale et accélération <span class="tag-indic">indicatif</span></h3>
         <ul class="plain small">
-          <li>Vmax : <span class="mono">{{ fmt(result.profile.vmax, 'm/s') }}</span></li>
-          <li>τ : <span class="mono">{{ fmt(result.profile.tau, 's') }}</span></li>
+          <li>Vitesse maximale : <span class="mono">{{ fmt(result.profile.vmax, 'm/s') }}</span></li>
+          <li>Temps d’accélération (τ) : <span class="mono">{{ fmt(result.profile.tau, 's') }}</span></li>
           <li>F0 : <span class="mono">{{ frNumber(result.profile.f0, 1) }} N/kg</span> · Pmax : <span class="mono">{{ frNumber(result.profile.pmax, 1) }} W/kg</span></li>
           <li class="muted">Ajusté sur {{ result.profile.points }} points, écart moyen {{ frNumber(result.profile.rmse * 100, 0) }} cm. Marges à 2 écarts-types.</li>
         </ul>
       </section>
 
       <section v-if="result.steps.length" class="stack">
-        <h3>Pas</h3>
+        <h3>Foulées</h3>
         <table class="tbl small">
           <thead><tr><th>Pas</th><th>Durée</th><th>Fréquence</th><th>Longueur</th></tr></thead>
           <tbody>
@@ -185,11 +191,11 @@ const label = (e: MarkedEvent) => eventLabel(e.type, e.side);
             </tr>
           </tbody>
         </table>
-        <p class="small muted">Longueur de pas : indique la position de chaque appui (m) dans l’onglet Mesures.</p>
+        <p class="small muted">Longueur de pas : indique la position de chaque appui (m) dans l’onglet Résultats.</p>
       </section>
 
       <section v-if="result.contacts.length" class="stack">
-        <h3>Contacts</h3>
+        <h3>Contacts au sol</h3>
         <table class="tbl small">
           <thead><tr><th>Appui</th><th>Contact</th><th>Vol</th></tr></thead>
           <tbody>
