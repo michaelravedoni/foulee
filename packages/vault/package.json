@@ -1,0 +1,17 @@
+{
+  "name": "@foulee/vault",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@foulee/core": "workspace:*",
+    "@noble/hashes": "^2.4.0",
+    "fflate": "^0.8.3"
+  }
+}
