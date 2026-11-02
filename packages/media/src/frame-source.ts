@@ -79,7 +79,7 @@ function waitUntil(dueMs: number, isStopped: () => boolean): Promise<void> {
 /** Plafond du grand côté des images décodées (mémoire sur iPad). */
 const MAX_SIDE = 1920;
 /** Nombre d'images gardées en cache (pas arrière instantanés). */
-const CACHE_SIZE = 24;
+const CACHE_SIZE = 48;
 /** Images décodées en plus avant la cible lors d'un saut (quasi gratuites). */
 const PREFETCH_BACK = 12;
 /** Au-delà de cet écart, on relance le décodage depuis l'image clé. */
@@ -205,8 +205,8 @@ export class WebCodecsFrameSource implements FrameSource {
       }
       this.cache.set(idx, bmp);
       if (idx >= i) break;
-      // Une demande plus récente vers l'arrière : inutile de continuer.
-      if (this.target !== i && this.target < idx) break;
+      // Une demande plus récente : on s'arrête là (le curseur a déjà bougé), elle reprendra le flux.
+      if (this.target !== i) break;
     }
     return this.cache.get(i) ?? this.nearestCached(i);
   }

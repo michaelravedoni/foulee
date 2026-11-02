@@ -855,15 +855,6 @@ const viewportStyle = computed(() => ({
             <span v-if="playing" class="hud-rate">{{ SPEED_LABELS[rate] ?? `${frNumber(rate, 2)}×` }}</span>
           </div>
 
-          <button
-            v-if="source && !playing && !drawingEnabled && !compact"
-            class="bigplay"
-            aria-label="Lecture"
-            @pointerdown.stop
-            @click="play"
-          >
-            <Ico name="play" :size="34" />
-          </button>
           <div v-if="!source" class="stage-loading">Lecture du fichier…</div>
         </div>
       </div>
