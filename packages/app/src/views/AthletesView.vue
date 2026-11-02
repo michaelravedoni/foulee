@@ -37,7 +37,7 @@ async function create() {
   <section class="stack">
     <div class="spread">
       <h1>Athlètes</h1>
-      <button class="btn" @click="showForm = !showForm">＋ Ajouter</button>
+      <button class="btn" @click="showForm = !showForm">＋ Nouvel athlète</button>
     </div>
     <form v-if="showForm" class="card form-grid" @submit.prevent="create">
       <label class="field">Prénom <input v-model="first" autocomplete="off" autofocus /></label>

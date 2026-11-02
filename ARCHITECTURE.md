@@ -231,3 +231,13 @@ La licence du projet est provisoirement « tous droits réservés » (voir `LICE
 - Application : écran `/normes` (import, modèle téléchargeable, « J'ai vérifié à la source », suppression), onglet **Normes** de l'essai, bloc **Progression** par épreuve sur la fiche athlète, lignes « Références » dans les rapports.
 - Résultat d'un essai (`app/lib/results.ts`) : temps total (sprint), longueur (sauts horizontaux), distance saisie (lancers). Hauteur de barre (saut en hauteur, perche) : pas encore de résultat principal, donc pas de comparaison.
 - Test de plausibilité du modèle Vmax/τ sur des temps intermédiaires de référence (recopiés de mémoire, à contrôler) : ordres de grandeur seulement.
+
+## Refonte UX (parcours, textes, navigation)
+
+Principes : une action principale toujours visible (« ＋ Ajouter une vidéo » dans la barre du haut), le vocabulaire de l'entraîneur plutôt que celui du modèle de données, et les fonctions avancées repliées.
+
+- Barre du haut : Vidéos, Athlètes, Comparer ; menu « Plus » (séances, replay, normes, sauvegarde, gros boutons, verrouillage). Plus de navigation fixe en bas à droite, plus de bandeau « prête hors ligne ».
+- Ajouter une vidéo : la séance du jour est créée à la demande (`lib/quick.ts`) ; la boîte demande seulement l'athlète (ou un nouvel athlète) et l'épreuve ; cadence et étiquettes sont sous « Options ».
+- Accueil « Mes vidéos » : grille de cartes (athlète, épreuve, date, résultat ou « à mesurer »), recherche ; écran d'accueil en trois étapes tant qu'il n'y a pas de vidéo.
+- Fiche d'essai : cinq onglets (Mesurer, Résultats, Rapport, Outils, Infos) ; « Mesurer » ouvre par défaut avec des consignes numérotées et le résultat en grand ; départ au son et appuis sont dans « Outils avancés » ; repères libres, suivi automatique et kinogramme sont sous « Outils » ; les normes (si un tableau est importé) apparaissent dans « Résultats » ; étiquettes dans « Infos ».
+- Sauvegarde : l'ancien « Coffre » devient « Sauvegarde et données » (copie complète / légère, restaurer, protéger mes données).

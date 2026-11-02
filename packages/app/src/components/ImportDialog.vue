@@ -20,7 +20,7 @@ const session = computed(() => state.sessions.get(props.sessionId));
 
 onMounted(() => {
   dialog.value?.showModal();
-  if (!athleteId.value && athletes.value.length === 1) athleteId.value = athletes.value[0]!.id;
+  if (!athleteId.value) athleteId.value = athletes.value.length === 1 ? athletes.value[0]!.id : athletes.value.length === 0 ? '__new' : '';
 });
 
 async function run() {
@@ -73,20 +73,20 @@ function cancel() {
 <template>
   <dialog ref="dialog" @cancel.prevent="cancel">
     <form class="stack" @submit.prevent="run">
-      <h2>Importer {{ files.length > 1 ? `${files.length} vidéos` : 'une vidéo' }}</h2>
+      <h2>{{ files.length > 1 ? `Ajouter ${files.length} vidéos` : 'Ajouter la vidéo' }}</h2>
       <ul class="small muted files">
         <li v-for="f in files" :key="f.name">{{ f.name }}</li>
       </ul>
       <label class="field">
         Athlète
         <select v-model="athleteId" required>
-          <option value="" disabled>Choisir…</option>
+          <option value="" disabled>Qui est sur la vidéo ?</option>
           <option v-for="a in athletes" :key="a.id" :value="a.id">{{ athleteName(a) }}</option>
-          <option value="__new">+ Nouvel athlète</option>
+          <option value="__new">＋ Nouvel athlète</option>
         </select>
       </label>
       <div v-if="athleteId === '__new'" class="form-grid">
-        <label class="field">Prénom <input v-model="newFirst" autocomplete="off" /></label>
+        <label class="field">Prénom <input v-model="newFirst" autocomplete="off" autofocus /></label>
         <label class="field">Nom <input v-model="newLast" autocomplete="off" /></label>
       </div>
       <div class="form-grid">
@@ -96,6 +96,10 @@ function cancel() {
             <option v-for="d in DISCIPLINES" :key="d.id" :value="d.id">{{ d.label }}</option>
           </select>
         </label>
+      </div>
+      <details class="stack">
+        <summary>Options (cadence, étiquettes)</summary>
+        <div class="stack opts">
         <label class="field">
           Cadence de prise de vue
           <select v-model="captureFps">
@@ -105,18 +109,18 @@ function cancel() {
             <option :value="240">240 i/s</option>
           </select>
         </label>
-      </div>
-      <p class="small muted">
-        La cadence du fichier est lue automatiquement. Ne change ce réglage que pour un ralenti ré-encodé (par exemple un
-        240 i/s exporté à 30 i/s).
-      </p>
+        <p class="small muted">
+        La cadence est lue automatiquement dans la vidéo. Ne la change que pour un ralenti ré-encodé (par exemple du 240 i/s exporté à 30 i/s).
+        </p>
       <TagEditor v-model="tags" quick />
+        </div>
+      </details>
       <ul v-if="errors.length" class="errors">
         <li v-for="(e, i) in errors" :key="i">{{ e }}</li>
       </ul>
       <div class="row" style="justify-content: flex-end">
         <button type="button" class="btn ghost" :disabled="running" @click="cancel">Annuler</button>
-        <button type="submit" class="btn" :disabled="running">{{ running ? 'Import en cours…' : 'Importer' }}</button>
+        <button type="submit" class="btn" :disabled="running">{{ running ? 'Ajout en cours…' : 'Ajouter' }}</button>
       </div>
     </form>
   </dialog>
