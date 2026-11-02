@@ -101,6 +101,14 @@ const rate = ref(settings.rate);
 const loopA = ref<number | null>(null);
 const loopB = ref<number | null>(null);
 const tool = ref<Tool>('deplacer');
+const drawing = ref(false);
+const moreOpen = ref(false);
+const showKeys = ref(false);
+const showJog = ref(typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches);
+function toggleDrawing() {
+  drawing.value = !drawing.value;
+  if (!drawing.value) tool.value = 'deplacer';
+}
 const timecodeMode = ref<TimecodeMode>(settings.timecode);
 const fullscreen = ref(false);
 const fakeFullscreen = ref(false);
@@ -838,9 +846,11 @@ function onKey(e: KeyboardEvent) {
       setRate(stepRate(rate.value, -1));
       break;
     case 'Home':
+      e.preventDefault();
       seek(loop.value?.a ?? 0);
       break;
     case 'End':
+      e.preventDefault();
       seek(lastFrame.value);
       break;
     case '[':
@@ -857,6 +867,12 @@ function onKey(e: KeyboardEvent) {
       break;
     case 'f':
       if (!mod) toggleFullscreen();
+      break;
+    case 'e':
+      if (!mod) toggleDrawing();
+      break;
+    case '?':
+      showKeys.value = !showKeys.value;
       break;
     case '+':
     case '=':
@@ -880,6 +896,7 @@ function onKey(e: KeyboardEvent) {
       }
       break;
     case 'Escape':
+      moreOpen.value = false;
       if (fakeFullscreen.value) toggleFullscreen();
       tool.value = 'deplacer';
       draft.value = null;
@@ -1084,35 +1101,59 @@ const viewportStyle = computed(() => ({
 
       <div class="transport">
         <div class="group">
-          <button class="btn secondary icon" title="Début (Origine)" aria-label="Aller au début" @click="seek(loop?.a ?? 0)"><Ico name="start" /></button>
-          <button class="btn secondary icon" title="−10 images (Maj+←)" aria-label="Reculer de 10 images" @pointerdown="startRepeat(-10, $event)" @pointerup="stopRepeat" @pointercancel="stopRepeat" @click="keyboardClick(-10, $event)"><Ico name="back" /></button>
+          <template v-if="compact">
+            <button class="btn secondary icon" title="Début (Origine)" aria-label="Aller au début" @click="seek(loop?.a ?? 0)"><Ico name="start" /></button>
+            <button class="btn secondary icon" title="−10 images (Maj+←)" aria-label="Reculer de 10 images" @pointerdown="startRepeat(-10, $event)" @pointerup="stopRepeat" @pointercancel="stopRepeat" @click="keyboardClick(-10, $event)"><Ico name="back" /></button>
+          </template>
           <button class="btn secondary icon" title="Image précédente (←)" aria-label="Image précédente" @pointerdown="startRepeat(-1, $event)" @pointerup="stopRepeat" @pointercancel="stopRepeat" @click="keyboardClick(-1, $event)"><Ico name="prev" /></button>
           <button class="btn icon play" :title="playing ? 'Pause (Espace)' : 'Lecture (Espace)'" :aria-label="playing ? 'Pause' : 'Lecture'" @click="togglePlay">
             <Ico :name="playing ? 'pause' : 'play'" :size="26" />
           </button>
           <button class="btn secondary icon" title="Image suivante (→)" aria-label="Image suivante" @pointerdown="startRepeat(1, $event)" @pointerup="stopRepeat" @pointercancel="stopRepeat" @click="keyboardClick(1, $event)"><Ico name="next" /></button>
-          <button class="btn secondary icon" title="+10 images (Maj+→)" aria-label="Avancer de 10 images" @pointerdown="startRepeat(10, $event)" @pointerup="stopRepeat" @pointercancel="stopRepeat" @click="keyboardClick(10, $event)"><Ico name="fwd" /></button>
-          <button class="btn secondary icon" title="Fin" aria-label="Aller à la fin" @click="seek(loop?.b ?? lastFrame)"><Ico name="end" /></button>
+          <template v-if="compact">
+            <button class="btn secondary icon" title="+10 images (Maj+→)" aria-label="Avancer de 10 images" @pointerdown="startRepeat(10, $event)" @pointerup="stopRepeat" @pointercancel="stopRepeat" @click="keyboardClick(10, $event)"><Ico name="fwd" /></button>
+            <button class="btn secondary icon" title="Fin" aria-label="Aller à la fin" @click="seek(loop?.b ?? lastFrame)"><Ico name="end" /></button>
+          </template>
         </div>
-        <div class="group seg" role="group" aria-label="Vitesse">
-          <button v-for="s in RATES" :key="s" class="seg-btn" :class="{ active: rate === s }" :aria-pressed="rate === s" @click="setRate(s)">
-            {{ SPEED_LABELS[s] }}
-          </button>
-        </div>
-        <div v-if="!compact" class="group">
-          <button class="btn ghost small" :class="{ active: loopA !== null }" title="Début de boucle ([)" @click="setLoopA">A</button>
-          <button class="btn ghost small" :class="{ active: loopB !== null }" title="Fin de boucle (])" @click="setLoopB">B</button>
-          <button class="btn ghost small" :disabled="loopA === null && loopB === null" title="Effacer la boucle (\)" aria-label="Effacer la boucle" @click="clearLoop"><Ico name="loop" :size="16" /> ✕</button>
-          <button class="btn ghost small" title="Définir l’image courante comme t = 0 (touche 0)" @click="setOrigin">t = 0</button>
-          <button class="btn ghost small icon" :title="fullscreen || fakeFullscreen ? 'Quitter le plein écran (F)' : 'Plein écran (F)'" aria-label="Plein écran" @click="toggleFullscreen"><Ico :name="fullscreen || fakeFullscreen ? 'exit' : 'full'" :size="18" /></button>
+        <div class="group">
+          <label class="rate" title="Vitesse de lecture (↑ ↓)">
+            <span class="muted small">Vitesse</span>
+            <select :value="rate" aria-label="Vitesse de lecture" @change="setRate(Number(($event.target as HTMLSelectElement).value))">
+              <option v-for="s in RATES" :key="s" :value="s">{{ SPEED_LABELS[s] }}</option>
+            </select>
+          </label>
+          <template v-if="!compact">
+            <button class="btn small" :class="{ secondary: !drawing }" :aria-pressed="drawing" title="Dessiner sur la vidéo : lignes, angles, règle, trajectoire… (E)" @click="toggleDrawing">
+              <Ico name="pen" :size="16" /> Dessiner
+            </button>
+            <button class="btn ghost small icon" :title="fullscreen || fakeFullscreen ? 'Quitter le plein écran (F)' : 'Plein écran (F)'" aria-label="Plein écran" @click="toggleFullscreen"><Ico :name="fullscreen || fakeFullscreen ? 'exit' : 'full'" :size="18" /></button>
+            <div class="more">
+              <button class="btn ghost small" :aria-expanded="moreOpen" aria-haspopup="true" aria-label="Plus d’options du lecteur" @click="moreOpen = !moreOpen">⋯</button>
+              <div v-if="moreOpen" class="more-menu" role="menu" @click="moreOpen = false">
+                <button role="menuitem" @click="seek(loop?.a ?? 0)">Aller au début <kbd>Début</kbd></button>
+                <button role="menuitem" @click="seek(loop?.b ?? lastFrame)">Aller à la fin <kbd>Fin</kbd></button>
+                <button role="menuitem" @click="step(-10)">Reculer de 10 images <kbd>Maj ←</kbd></button>
+                <button role="menuitem" @click="step(10)">Avancer de 10 images <kbd>Maj →</kbd></button>
+                <hr />
+                <button role="menuitem" :class="{ on: loopA !== null }" @click="setLoopA">Début de la boucle de répétition <kbd>[</kbd></button>
+                <button role="menuitem" :class="{ on: loopB !== null }" @click="setLoopB">Fin de la boucle de répétition <kbd>]</kbd></button>
+                <button role="menuitem" :disabled="loopA === null && loopB === null" @click="clearLoop">Annuler la boucle <kbd>\</kbd></button>
+                <hr />
+                <button role="menuitem" @click="setOrigin">Fixer le zéro du chrono ici <kbd>0</kbd></button>
+                <button role="menuitem" @click="showJog = !showJog">{{ showJog ? 'Masquer' : 'Afficher' }} la molette image par image</button>
+                <button role="menuitem" @click="toggleCompat">{{ compat ? 'Revenir à la lecture précise' : 'Lecture simplifiée (si la vidéo saccade)' }}</button>
+                <button role="menuitem" @click="showKeys = !showKeys">Raccourcis clavier <kbd>?</kbd></button>
+              </div>
+            </div>
+          </template>
         </div>
       </div>
 
-      <div v-if="!compact" class="jog" role="slider" aria-label="Molette : glisser pour avancer image par image" :aria-valuenow="frame" @pointerdown="jogDown" @pointermove="jogMove" @pointerup="jogUp" @pointercancel="jogUp">
+      <div v-if="!compact && showJog" class="jog" role="slider" aria-label="Molette : glisser pour avancer image par image" :aria-valuenow="frame" @pointerdown="jogDown" @pointermove="jogMove" @pointerup="jogUp" @pointercancel="jogUp">
         <span v-for="i in 48" :key="i" class="tick" :class="{ major: (i + frame) % 6 === 0 }" :style="{ transform: `translateX(${-(frame % 6) * 2}px)` }"></span>
       </div>
 
-      <div v-if="!compact" class="toolbar" role="toolbar" aria-label="Dessin">
+      <div v-if="!compact && drawing" class="toolbar" role="toolbar" aria-label="Dessin">
         <button
           v-for="t in TOOLS"
           :key="t.id"
@@ -1166,15 +1207,11 @@ const viewportStyle = computed(() => ({
       </div>
 
       <p v-if="estimated" class="small muted">Cadence estimée à 30 i/s : le conteneur de ce fichier n’a pas pu être lu.</p>
-      <p v-else-if="source && !compact" class="small muted info-line">
-        <span>
-          {{ source.kind === 'webcodecs' ? 'Décodage WebCodecs (image exacte)' : 'Mode compatibilité (élément vidéo)' }} ·
-          {{ timeline?.frameCount }} images · {{ frNumber(fps, fps % 1 ? 2 : 0) }} i/s{{ timeline?.variable ? ' (variable)' : '' }} · ±{{ frNumber((1000 / fps) * scale, 1) }} ms par image
-        </span>
-        <button class="btn ghost small" @click="toggleCompat">{{ compat ? 'Revenir au décodage exact' : 'Mode compatibilité' }}</button>
+      <p v-if="!estimated && source && !compact" class="small muted info-line">
+        {{ source.kind === 'webcodecs' ? 'Lecture précise (WebCodecs)' : 'Lecture simplifiée' }} · {{ timeline?.frameCount }} images · {{ frNumber(fps, fps % 1 ? 2 : 0) }} i/s{{ timeline?.variable ? ' (variable)' : '' }} · ±{{ frNumber((1000 / fps) * scale, 1) }} ms par image
       </p>
-      <p v-if="!compact" class="small muted keys">
-        Espace lecture · ← → image · Maj+← → 10 images · ↑ ↓ vitesse · [ ] boucle · 0 origine · F plein écran · glisser sur l’image pour parcourir · pincer ou double-toucher pour zoomer
+      <p v-if="!compact && showKeys" class="small muted keys">
+        Espace lecture · ← → image · Maj+← → 10 images · ↑ ↓ vitesse · [ ] boucle · 0 zéro du chrono · F plein écran · E dessiner · ? cette aide · glisser sur l’image pour parcourir · pincer ou double-toucher pour zoomer
       </p>
     </template>
   </div>
@@ -1396,6 +1433,69 @@ const viewportStyle = computed(() => ({
 }
 .play {
   width: calc(var(--tap) * 1.5);
+}
+.rate {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.rate select {
+  width: auto;
+  min-height: calc(var(--tap) - 8px);
+  padding: 2px 8px;
+}
+.more {
+  position: relative;
+}
+.more-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 30;
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  background: #161616;
+  color: #fff;
+  border: 1px solid #3a3a3a;
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px #000;
+}
+.more-menu button {
+  appearance: none;
+  background: none;
+  border: 0;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  padding: 8px 10px;
+  min-height: 40px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+.more-menu button:hover:not(:disabled) {
+  background: #2a2a2a;
+}
+.more-menu button.on {
+  font-weight: 600;
+}
+.more-menu button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.more-menu kbd {
+  font: 500 12px var(--font-mono, monospace);
+  color: #9a9a9a;
+}
+.more-menu hr {
+  border: 0;
+  border-top: 1px solid #3a3a3a;
+  margin: 4px 0;
 }
 .seg {
   gap: 0;

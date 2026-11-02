@@ -13,6 +13,18 @@ async function canvasHash(page: Page): Promise<string> {
   });
 }
 
+/** Ouvre une section repliable de la fiche d'essai (sans la refermer si elle est déjà ouverte). */
+async function openSection(page: Page, title: string) {
+  const d = page.locator('details.more-sec', { has: page.locator('summary', { hasText: title }) });
+  if (!(await d.evaluate((e) => (e as HTMLDetailsElement).open))) await d.locator('summary').click();
+}
+
+/** Choisit une étape dans la bande de mesure, puis marque l'image affichée. */
+async function markStep(page: Page, label: string) {
+  await page.getByTestId('steps').getByRole('button', { name: new RegExp(`^${label}( ✓)?$`) }).click();
+  await page.getByTestId('mark-current').click();
+}
+
 async function waitFrame(page: Page, n: number) {
   await expect(page.locator('.hud-tc')).toHaveText(`img ${n}`);
   // laisse le décodage se terminer
@@ -98,10 +110,11 @@ test('séance complète : athlète, séance, import, image par image, dessin, co
   await waitFrame(page, 10);
   await page.locator('.hud-tc').click(); // image → h:m:s
   await expect(page.locator('.hud-tc')).toHaveText('0:00,083');
-  await page.getByRole('button', { name: 'Départ', exact: true }).click();
+  await markStep(page, 'Départ');
   await expect(page.getByTestId('sprint-marks').locator('li')).toHaveCount(1);
 
   // Dessin : une ligne, annuler, rétablir
+  await page.getByRole('button', { name: 'Dessiner' }).click();
   await page.getByRole('button', { name: 'Ligne' }).click();
   const stage = page.locator('.stage');
   const box = (await stage.boundingBox())!;
@@ -116,7 +129,7 @@ test('séance complète : athlète, séance, import, image par image, dessin, co
   await expect(page.locator('svg.draw path')).toHaveCount(1);
 
   // Tag rapide (onglet Infos)
-  await page.getByRole('tab', { name: 'Infos', exact: true }).click();
+  await openSection(page, 'Informations sur l’essai');
   await page.getByRole('button', { name: 'essai valide' }).click();
   await expect(page.getByRole('button', { name: 'essai valide' })).toHaveAttribute('aria-pressed', 'true');
 
@@ -131,6 +144,7 @@ test('séance complète : athlète, séance, import, image par image, dessin, co
   await expect(page.getByTestId('sprint-marks').locator('li')).toHaveCount(1);
 
   // Mesures : étalon de 10 m, longueur calibrée, trajectoire, chrono par sections
+  await page.getByRole('button', { name: 'Dessiner' }).click();
   page.once('dialog', (d) => void d.accept('10'));
   await page.getByRole('button', { name: /Étalon/ }).click();
   const sb = (await page.locator('.stage').boundingBox())!;
@@ -144,26 +158,23 @@ test('séance complète : athlète, séance, import, image par image, dessin, co
   for (let i = 0; i < 3; i++) {
     await page.mouse.click(sb.x + sb.width * (0.3 + 0.05 * i), sb.y + sb.height * 0.4);
   }
-  await page.getByRole('tab', { name: 'Résultats', exact: true }).click();
+  await openSection(page, 'Étalon, sections');
   await expect(page.getByText(/Trajectoire 1 · 3 points/)).toBeVisible();
   await expect(page.getByText(/px\/m, incertitude/)).toBeVisible();
-  await page.getByRole('tab', { name: 'Outils', exact: true }).click();
-  await page.getByRole('button', { name: 'Arrivée', exact: true }).click();
-  await page.getByRole('tab', { name: 'Résultats', exact: true }).click();
+  await markStep(page, 'Arrivée');
+  await openSection(page, 'Étalon, sections');
   await expect(page.locator('table.sections tbody tr')).toHaveCount(1);
   await expect(page.locator('table.sections tbody tr td.mono').first()).toContainText('±');
 
   // Épreuve : splits d'un 100 m avec contrôles de plausibilité
-  await page.getByRole('tab', { name: 'Mesurer', exact: true }).click();
-  await page.getByRole('button', { name: '30 m', exact: true }).click();
+  await markStep(page, '30 m');
   await expect(page.locator('.sprint table.tbl').first()).toBeVisible();
   await expect(page.locator('.sprint .checks')).toContainText('improbable'); // 30 m en quelques images : le moteur alerte
-  await page.getByRole('button', { name: '30 m' }).click(); // remplace, ne duplique pas
-  await page.getByRole('tab', { name: 'Outils', exact: true }).click();
+  await markStep(page, '30 m'); // remplace, ne duplique pas
+  await openSection(page, 'Repères libres');
   await expect(page.locator('.events li')).toHaveCount(3); // départ, arrivée, un seul 30 m
 
   // Départ au son : le coup est à 1,0 s dans la vidéo de test (image 120 à 120 i/s)
-  await page.getByRole('tab', { name: 'Mesurer', exact: true }).click();
   await page.getByText('Outils avancés').click();
   await page.getByRole('button', { name: 'Détecter le départ' }).click();
   await expect(page.getByText(/le plus fort/)).toBeVisible({ timeout: 20_000 });
@@ -172,17 +183,16 @@ test('séance complète : athlète, séance, import, image par image, dessin, co
 
   // Supprimer un repère depuis le panneau
   await page.getByRole('button', { name: /Supprimer Passage repère/ }).first().click();
-  await page.getByRole('tab', { name: 'Outils', exact: true }).click();
+  await openSection(page, 'Repères libres');
   await expect(page.locator('.events li')).toHaveCount(2);
 
   // Kinogramme à partir des repères
-  await page.getByRole('tab', { name: 'Outils', exact: true }).click();
-  await page.getByRole('button', { name: 'Kinogramme', exact: true }).click();
+  await openSection(page, 'Kinogramme');
   await page.getByRole('button', { name: /Générer/ }).click();
   await expect(page.getByRole('button', { name: 'Télécharger en PNG' })).toBeVisible({ timeout: 20_000 });
 
   // Rapports : deux PDF et un CSV, générés sur l'appareil
-  await page.getByRole('tab', { name: 'Rapport', exact: true }).click();
+  await openSection(page, 'Rapport et export');
   for (const [button, suffix] of [['PDF athlète', 'athlete.pdf'], ['PDF coach', 'coach.pdf']] as const) {
     const [download] = await Promise.all([page.waitForEvent('download', { timeout: 30_000 }), page.getByRole('button', { name: button }).click()]);
     expect(download.suggestedFilename()).toContain(suffix);
@@ -389,24 +399,23 @@ test('saut en longueur : gabarit, mesures et rapport', async ({ page }) => {
   await page.locator('.hud-tc').click();
   await waitFrame(page, 0);
 
-  await page.getByRole('tab', { name: 'Mesurer', exact: true }).click();
-  await expect(page.getByRole('heading', { name: /Gabarit du longueur/i })).toBeVisible();
+  await expect(page.getByTestId('steps')).toContainText('Marquer ici');
 
   // Appel (planche, 0 m), décollage, réception à 6,20 m
   for (let i = 0; i < 20; i++) await page.keyboard.press('ArrowRight');
   await waitFrame(page, 20);
-  await page.getByRole('button', { name: 'Appel droit' }).click();
+  await page.getByRole('button', { name: 'Marquer ici : Appel droit' }).click();
   for (let i = 0; i < 10; i++) await page.keyboard.press('ArrowRight');
-  await page.getByRole('button', { name: 'Décollage gauche', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Marquer ici : Décollage gauche' }).click();
   for (let i = 0; i < 60; i++) await page.keyboard.press('ArrowRight');
-  await page.getByLabel('Position (m) : Réception').fill('6,2');
-  await page.getByRole('button', { name: 'Réception', exact: true }).click();
+  await page.getByTestId('steps').getByLabel('Position (m) : Réception').fill('6,2');
+  await page.getByRole('button', { name: 'Marquer ici : Réception' }).click();
 
   await expect(page.getByText('Longueur du saut')).toBeVisible();
   await expect(page.locator('.jump table.tbl').first()).toContainText('6,20');
   await expect(page.locator('.jump table.tbl').first()).toContainText('indicatif');
 
-  await page.getByRole('tab', { name: 'Rapport', exact: true }).click();
+  await openSection(page, 'Rapport et export');
   for (const [button, suffix] of [['PDF athlète', 'athlete.pdf'], ['PDF coach', 'coach.pdf']] as const) {
     const [download] = await Promise.all([page.waitForEvent('download', { timeout: 30_000 }), page.getByRole('button', { name: button }).click()]);
     expect(download.suggestedFilename()).toContain(suffix);
@@ -433,18 +442,16 @@ test('marteau : tours, gabarit et rapport', async ({ page }) => {
   await page.locator('.hud-tc').click();
   await waitFrame(page, 0);
 
-  await page.getByRole('tab', { name: 'Mesurer', exact: true }).click();
-  await expect(page.getByRole('heading', { name: /Gabarit du marteau/i })).toBeVisible();
+  await expect(page.getByTestId('steps')).toContainText('Marquer ici');
   for (const step of [0, 60, 60, 50]) {
     for (let i = 0; i < step; i++) await page.keyboard.press('ArrowRight');
-    if (step === 50) await page.getByRole('button', { name: 'Lâcher', exact: true }).click();
-    else await page.getByRole('button', { name: 'Début de tour', exact: true }).click();
+    await markStep(page, step === 50 ? 'Lâcher' : 'Début de tour');
   }
   await expect(page.locator('.throw table.tbl').first()).toContainText('Nombre de tours');
   await expect(page.locator('.throw table.tbl').nth(1)).toContainText('Tour 3');
   await expect(page.getByText(/Sans étalon/)).toBeVisible();
 
-  await page.getByRole('tab', { name: 'Rapport', exact: true }).click();
+  await openSection(page, 'Rapport et export');
   for (const [button, suffix] of [['PDF athlète', 'athlete.pdf'], ['PDF coach', 'coach.pdf']] as const) {
     const [download] = await Promise.all([page.waitForEvent('download', { timeout: 30_000 }), page.getByRole('button', { name: button }).click()]);
     expect(download.suggestedFilename()).toContain(suffix);
@@ -471,6 +478,7 @@ test('suivi automatique d’un point et onglet Auto', async ({ page }) => {
   await waitFrame(page, 0);
 
   // Un point pointé, puis suivi automatique sur les images suivantes.
+  await page.getByRole('button', { name: 'Dessiner' }).click();
   await page.getByRole('button', { name: /Trajectoire/ }).click();
   const sb = (await page.locator('.stage').boundingBox())!;
   await page.mouse.click(sb.x + sb.width * 0.5, sb.y + sb.height * 0.5);
@@ -478,9 +486,7 @@ test('suivi automatique d’un point et onglet Auto', async ({ page }) => {
   await expect(page.getByText(/point(s)? ajouté/)).toBeVisible({ timeout: 30_000 });
 
   // L'onglet Auto propose la détection ; sans modèle téléchargé il ne bloque rien.
-  await page.getByRole('tab', { name: 'Outils', exact: true }).click();
-  await page.getByRole('button', { name: 'Suivi automatique', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Détecter le corps et les appuis' })).toBeEnabled();
+  await expect(page.getByTestId('auto-run')).toBeEnabled();
 });
 
 test('normes : import d’un tableau, vérification, comparaison et progression', async ({ page }) => {
@@ -501,6 +507,7 @@ test('normes : import d’un tableau, vérification, comparaison et progression'
   await page.getByRole('button', { name: 'Créer' }).click();
   await page.getByLabel('Date de naissance').fill(`${year - 15}-06-15`);
   await page.getByTestId('athlete-sex').selectOption('M');
+  await page.waitForTimeout(600); // enregistrement différé de la fiche
 
   await page.getByRole('button', { name: 'Plus' }).click();
   await page.getByRole('menuitem', { name: /Normes/ }).click();
@@ -520,18 +527,16 @@ test('normes : import d’un tableau, vérification, comparaison et progression'
   await expect(page.getByText(/240 images · 120 i\/s/)).toBeVisible({ timeout: 20_000 });
   await page.locator('.hud-tc').click();
   await waitFrame(page, 0);
-  await page.getByRole('tab', { name: 'Mesurer', exact: true }).click();
   for (let i = 0; i < 20; i++) await page.keyboard.press('ArrowRight');
   await waitFrame(page, 20);
-  await page.getByRole('button', { name: 'Appel droit' }).click();
+  await page.getByRole('button', { name: 'Marquer ici : Appel droit' }).click();
   for (let i = 0; i < 10; i++) await page.keyboard.press('ArrowRight');
-  await page.getByRole('button', { name: 'Décollage gauche', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Marquer ici : Décollage gauche' }).click();
   for (let i = 0; i < 60; i++) await page.keyboard.press('ArrowRight');
-  await page.getByLabel('Position (m) : Réception').fill('6,2');
-  await page.getByRole('button', { name: 'Réception', exact: true }).click();
+  await page.getByTestId('steps').getByLabel('Position (m) : Réception').fill('6,2');
+  await page.getByRole('button', { name: 'Marquer ici : Réception' }).click();
   await expect(page.getByText('Longueur du saut')).toBeVisible();
 
-  await page.getByRole('tab', { name: 'Résultats', exact: true }).click();
   const box = page.getByTestId('norm-box');
   await expect(box).toContainText('niveau atteint : Bronze');
   await expect(box).toContainText('prochain : Argent');

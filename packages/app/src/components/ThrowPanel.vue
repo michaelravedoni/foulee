@@ -28,11 +28,10 @@ const metricText = (m: { value: { value: number; margin: number }; digits: numbe
 <template>
   <div v-if="spec" class="stack throw">
     <p class="small muted">
-      {{ spec.label }} : marque les repères ci-dessous. Pour la vitesse et l’angle de lâcher, trace d’abord un <strong>étalon</strong>
-      (onglet Mesures), puis pointe l’<strong>engin sur 3 à 4 images à partir du lâcher</strong> avec l’outil Trajectoire.
+      Pour la vitesse et l’angle de lâcher : dans « Dessiner », trace d’abord un <strong>étalon</strong> (outil règle), puis pointe l’<strong>engin sur 3 à 4 images à partir du lâcher</strong> (outil trajectoire).
     </p>
 
-    <EventTemplate :title="`Gabarit du ${spec.label.toLowerCase()}`" :defs="spec.events" :events="analysis.events" @mark="(t, sd, p) => emit('mark', t, sd, p)" @seek="(f) => emit('seek', f)" @remove="(id) => emit('remove', id)" />
+    <EventTemplate :title="`Tous les repères du ${spec.label.toLowerCase()}, avec leurs positions`" collapse-defs :defs="spec.events" :events="analysis.events" @mark="(t, sd, p) => emit('mark', t, sd, p)" @seek="(f) => emit('seek', f)" @remove="(id) => emit('remove', id)" />
 
     <template v-if="result">
       <p v-if="result.missing.length" class="small" role="status">À poser : {{ result.missing.join(', ') }}.</p>

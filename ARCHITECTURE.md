@@ -241,3 +241,9 @@ Principes : une action principale toujours visible (« ＋ Ajouter une vidéo »
 - Accueil « Mes vidéos » : grille de cartes (athlète, épreuve, date, résultat ou « à mesurer »), recherche ; écran d'accueil en trois étapes tant qu'il n'y a pas de vidéo.
 - Fiche d'essai : cinq onglets (Mesurer, Résultats, Rapport, Outils, Infos) ; « Mesurer » ouvre par défaut avec des consignes numérotées et le résultat en grand ; départ au son et appuis sont dans « Outils avancés » ; repères libres, suivi automatique et kinogramme sont sous « Outils » ; les normes (si un tableau est importé) apparaissent dans « Résultats » ; étiquettes dans « Infos ».
 - Sauvegarde : l'ancien « Coffre » devient « Sauvegarde et données » (copie complète / légère, restaurer, protéger mes données).
+
+## Fiche d'analyse : lecteur et bande de mesure
+
+- **Lecteur** : image précédente, lecture, image suivante, vitesse (liste), « Dessiner » (ouvre la barre d'outils de dessin), plein écran et « ⋯ » (début/fin, ±10 images, boucle, zéro du chrono, molette, lecture simplifiée, aide). Aucun raccourci retiré ; ajoutés : **E** (dessiner), **?** (aide), **Entrée** (marquer l'étape en cours, **Maj+Entrée** pour le pied droit). Home/Fin ne font plus défiler la page.
+- **Bande de mesure** (`MeasureSteps.vue`) : étapes de l'épreuve (départ, passages, arrivée ; ou le gabarit des sauts et lancers) en pastilles, un seul bouton « Marquer ici : <étape> » qui avance tout seul. Toucher une pastille choisit l'étape. Le résultat principal s'affiche en grand.
+- **Colonne de gauche** : Mesure, **Analyse automatique** (toujours visible), normes, puis sections repliables (rapport, étalon/sections/trajectoires, repères libres, kinogramme, informations).
