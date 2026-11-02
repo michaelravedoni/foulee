@@ -7,7 +7,7 @@ import { assertKey, toBlob, withTimeout, type StorageProvider } from './provider
  * `createSyncAccessHandle` (seule méthode d'écriture sur certains Safari).
  */
 export class OpfsProvider implements StorageProvider {
-  readonly name = 'navigateur (OPFS)';
+  readonly name: string = 'navigateur (OPFS)';
   private rootPromise: Promise<FileSystemDirectoryHandle> | undefined;
 
   constructor(private readonly baseDir = 'foulee-vault') {}
@@ -16,7 +16,7 @@ export class OpfsProvider implements StorageProvider {
     return typeof navigator !== 'undefined' && !!navigator.storage && typeof navigator.storage.getDirectory === 'function';
   }
 
-  private root(): Promise<FileSystemDirectoryHandle> {
+  protected root(): Promise<FileSystemDirectoryHandle> {
     this.rootPromise ??= withTimeout(
       navigator.storage.getDirectory().then((r) => r.getDirectoryHandle(this.baseDir, { create: true })),
       10_000,
@@ -28,7 +28,7 @@ export class OpfsProvider implements StorageProvider {
     return this.rootPromise;
   }
 
-  private async dir(parts: string[], create: boolean): Promise<FileSystemDirectoryHandle | null> {
+  protected async dir(parts: string[], create: boolean): Promise<FileSystemDirectoryHandle | null> {
     let d = await this.root();
     for (const p of parts) {
       try {

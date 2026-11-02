@@ -6,3 +6,8 @@ export * from './layout.js';
 export * from './vault.js';
 export * from './archive.js';
 export * from './migrations.js';
+export * from './crypto.js';
+export * from './sync.js';
+export * from './webdav.js';
+export * from './s3.js';
+export * from './fsdir.js';

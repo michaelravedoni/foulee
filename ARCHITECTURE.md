@@ -142,3 +142,18 @@ La licence du projet est provisoirement « tous droits réservés » (voir `LICE
 - Pas de fichier PDF ni d'entité « Rapport » stockés dans le coffre : les rapports sont régénérés à la demande.
 - Excel : CSV « ; » avec virgule décimale et BOM UTF-8 (s'ouvre directement dans Excel en français), pas de .xlsx.
 - Seuils à valider avec des entraîneurs : perte de vitesse en fin de course (4 %), plausibilité des contacts et fréquences.
+
+## Phase 5 : sauvegardes, chiffrement, restauration
+
+- Fournisseurs de stockage (même interface `StorageProvider`) : dossier du disque (File System Access API, Chromium sur
+  ordinateur ; réutilise le code OPFS), WebDAV (PROPFIND, MKCOL, PUT, GET, DELETE), S3 (signature AWS SigV4 vérifiée contre le
+  vecteur de test officiel « get-vanilla », liste paginée, PUT en `UNSIGNED-PAYLOAD`). WebDAV et S3 appellent le serveur depuis
+  le navigateur : il doit autoriser le CORS pour l'application. Pas de clés S3 dans un site public : elles restent sur l'appareil
+  (localStorage), à limiter à un seau dédié.
+- `EncryptedProvider` : voir `docs/format-coffre-v1.md`. Vidéos traitées par blocs, jamais chargées en entier.
+- `syncProviders(source, destination)` : copie ce qui manque ou est plus récent (`updatedAt`), médias identifiés par leur empreinte,
+  refuse de mêler deux coffres d'identifiant différent sauf restauration explicite. Les suppressions ne sont pas propagées.
+- `MirrorProvider` (écriture locale d'abord, copie en arrière-plan avec reprise) existe et est testé, mais n'est pas encore branché
+  dans l'interface : seule la sauvegarde manuelle l'est. Pas d'archive ZIP chiffrée : l'export ZIP reste en clair.
+- Écran Sauvegardes : destinations, test de connexion, « Sauvegarder maintenant », « Restaurer sur cet appareil » (réinstallation
+  sur un autre appareil). La phrase secrète n'est jamais enregistrée.

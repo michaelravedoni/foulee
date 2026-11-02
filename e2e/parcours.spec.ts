@@ -260,3 +260,105 @@ test('si OPFS ne répond pas, le coffre bascule sur IndexedDB et fonctionne', as
   await page.goto('./#/athletes');
   await expect(page.getByText('Zoé')).toBeVisible({ timeout: 15_000 });
 });
+
+/** Serveur WebDAV simulé au niveau du navigateur : mêmes fichiers pour tous les « appareils » du test. */
+function davRoute(files: Map<string, Buffer>, dirs: Set<string>) {
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': '*', 'access-control-allow-headers': '*', 'access-control-expose-headers': '*' };
+  const base = '/dav/foulee';
+  return async (route: import('@playwright/test').Route) => {
+    const req = route.request();
+    const method = req.method();
+    if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+    const rel = decodeURIComponent(new URL(req.url()).pathname.slice(base.length)).replace(/^\//, '').replace(/\/$/, '');
+    const ok = (status: number, body?: string | Buffer) => route.fulfill({ status, headers: cors, ...(body !== undefined ? { body } : {}) });
+    if (method === 'MKCOL') {
+      if (dirs.has(rel)) return ok(405);
+      dirs.add(rel);
+      return ok(201);
+    }
+    if (method === 'PUT') {
+      files.set(rel, req.postDataBuffer() ?? Buffer.alloc(0));
+      return ok(201);
+    }
+    if (method === 'GET' || method === 'HEAD') {
+      const f = files.get(rel);
+      return f ? ok(200, method === 'GET' ? f : undefined) : ok(404);
+    }
+    if (method === 'DELETE') {
+      files.delete(rel);
+      return ok(204);
+    }
+    if (method === 'PROPFIND') {
+      if (rel !== '' && !dirs.has(rel)) return ok(404);
+      const prefix = rel ? rel + '/' : '';
+      const enc = (p: string) => p.split('/').map(encodeURIComponent).join('/');
+      const entry = (href: string, dir: boolean) => `<d:response><d:href>${href}</d:href><d:propstat><d:prop><d:resourcetype>${dir ? '<d:collection/>' : ''}</d:resourcetype></d:prop></d:propstat></d:response>`;
+      const items = [entry(`${base}/${enc(prefix)}`, true)];
+      for (const d of dirs) if (d && d.startsWith(prefix) && !d.slice(prefix.length).includes('/')) items.push(entry(`${base}/${enc(d)}/`, true));
+      for (const f of files.keys()) if (f.startsWith(prefix) && !f.slice(prefix.length).includes('/')) items.push(entry(`${base}/${enc(f)}`, false));
+      return ok(207, `<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">${items.join('')}</d:multistatus>`);
+    }
+    return ok(405);
+  };
+}
+
+test('sauvegarde chiffrée sur WebDAV, puis restauration sur un nouvel appareil', async ({ browser }) => {
+  const files = new Map<string, Buffer>();
+  const dirs = new Set<string>(['']);
+  const handler = davRoute(files, dirs);
+  const URL_DAV = 'https://dav.test/dav/foulee';
+
+  // Appareil 1 : un athlète, une destination chiffrée, une sauvegarde
+  const ctx1 = await browser.newContext();
+  const a = await ctx1.newPage();
+  await a.route('https://dav.test/**', handler);
+  await a.goto('./');
+  await expect(a.getByRole('heading', { name: 'Bonjour 👋' })).toBeVisible();
+  await a.getByRole('navigation').getByRole('link', { name: 'Athlètes' }).click();
+  await a.getByRole('button', { name: '＋ Ajouter' }).click();
+  await a.getByLabel('Prénom').fill('Léa');
+  await a.getByLabel('Nom', { exact: true }).fill('Secret');
+  await a.getByRole('button', { name: 'Créer' }).click();
+  await expect(a.getByRole('heading', { name: /Léa Secret/ })).toBeVisible();
+  await a.goto('./#/sauvegardes');
+  await a.getByRole('button', { name: /Ajouter une destination/ }).click();
+  await a.getByLabel('Adresse du dossier').fill(URL_DAV);
+  await a.getByLabel('Phrase secrète (8 caractères minimum)').fill('phrase-secrete');
+  await a.getByLabel('Confirmer').fill('phrase-secrete');
+  await a.getByRole('button', { name: 'Ajouter', exact: true }).click();
+  await expect(a.getByText('Destination ajoutée')).toBeVisible({ timeout: 20_000 });
+  await a.getByRole('button', { name: 'Sauvegarder maintenant' }).click();
+  await expect(a.getByText(/Sauvegarde terminée/)).toBeVisible({ timeout: 30_000 });
+
+  // Rien de lisible sur le serveur
+  const stored = [...files.entries()].filter(([k]) => k.startsWith('athletes/'));
+  expect(stored.length).toBe(1);
+  expect(stored[0]![1].toString('latin1')).not.toContain('Secret');
+  expect(files.has('encryption.json')).toBe(true);
+  await ctx1.close();
+
+  // Appareil 2 : navigateur vierge
+  const ctx2 = await browser.newContext();
+  const b = await ctx2.newPage();
+  await b.route('https://dav.test/**', handler);
+  await b.goto('./');
+  await expect(b.getByRole('heading', { name: 'Bonjour 👋' })).toBeVisible();
+  await b.goto('./#/sauvegardes');
+  await b.getByRole('button', { name: /Ajouter une destination/ }).click();
+  await b.getByLabel('Adresse du dossier').fill(URL_DAV);
+  // mauvaise phrase : refus
+  await b.getByLabel('Phrase secrète (8 caractères minimum)').fill('mauvaise-phrase');
+  await b.getByLabel('Confirmer').fill('mauvaise-phrase');
+  await b.getByRole('button', { name: 'Ajouter', exact: true }).click();
+  await expect(b.getByText(/phrase secrète incorrecte/)).toBeVisible({ timeout: 20_000 });
+  await b.getByLabel('Phrase secrète (8 caractères minimum)').fill('phrase-secrete');
+  await b.getByLabel('Confirmer').fill('phrase-secrete');
+  await b.getByRole('button', { name: 'Ajouter', exact: true }).click();
+  await expect(b.getByText('Destination ajoutée')).toBeVisible({ timeout: 20_000 });
+  b.once('dialog', (d) => void d.accept());
+  await b.getByRole('button', { name: 'Restaurer sur cet appareil' }).click();
+  await expect(b.getByText(/Restauration terminée/)).toBeVisible({ timeout: 30_000 });
+  await b.goto('./#/athletes');
+  await expect(b.getByText('Léa Secret')).toBeVisible();
+  await ctx2.close();
+});
