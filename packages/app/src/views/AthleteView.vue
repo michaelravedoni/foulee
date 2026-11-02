@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { DISCIPLINES, athleteName, type Athlete } from '@foulee/core';
 import { moveToTrash, saveAthlete, state, trialsOfAthlete } from '../store/data';
@@ -24,12 +24,19 @@ const trialList = computed(() =>
 const usedDisciplines = computed(() => DISCIPLINES.filter((d) => trialsOfAthlete(props.id).some((t) => t.discipline === d.id)));
 
 let timer = 0;
+function flush() {
+  clearTimeout(timer);
+  timer = 0;
+  if (draft.value) void saveAthlete(draft.value);
+}
 function save() {
   clearTimeout(timer);
-  timer = window.setTimeout(() => {
-    if (draft.value) void saveAthlete(draft.value);
-  }, 300);
+  timer = window.setTimeout(flush, 300);
 }
+// Une modification en attente est enregistrée si on quitte la fiche avant la fin du délai.
+onBeforeUnmount(() => {
+  if (timer) flush();
+});
 async function trash() {
   if (!athlete.value || !confirm(`Mettre ${athleteName(athlete.value)} et ses essais à la corbeille ?`)) return;
   await moveToTrash('athlete', props.id);
@@ -53,7 +60,7 @@ function toggle(id: string) {
       <div class="form-grid">
         <label class="field">Prénom <input v-model="draft.firstName" @input="save" /></label>
         <label class="field">Nom <input v-model="draft.lastName" @input="save" /></label>
-        <label class="field">Date de naissance <input v-model="draft.birthDate" type="date" @change="save" /></label>
+        <label class="field">Date de naissance <input v-model="draft.birthDate" type="date" @input="save" @change="save" /></label>
         <label class="field">
           Sexe (pour les normes)
           <select v-model="draft.sex" data-testid="athlete-sex" @change="save">

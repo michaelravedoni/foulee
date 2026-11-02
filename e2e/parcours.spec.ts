@@ -507,6 +507,7 @@ test('normes : import d’un tableau, vérification, comparaison et progression'
   await page.getByRole('button', { name: 'Créer' }).click();
   await page.getByLabel('Date de naissance').fill(`${year - 15}-06-15`);
   await page.getByTestId('athlete-sex').selectOption('M');
+  await page.waitForTimeout(600); // enregistrement différé de la fiche
 
   await page.getByRole('button', { name: 'Plus' }).click();
   await page.getByRole('menuitem', { name: /Normes/ }).click();
