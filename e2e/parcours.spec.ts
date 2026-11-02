@@ -151,6 +151,15 @@ test('séance complète : athlète, séance, import, image par image, dessin, co
   await expect(page.locator('table.sections tbody tr')).toHaveCount(1);
   await expect(page.locator('table.sections tbody tr td.mono').first()).toContainText('±');
 
+  // Épreuve : splits d'un 100 m avec contrôles de plausibilité
+  await page.getByRole('button', { name: 'Épreuve', exact: true }).click();
+  await page.getByRole('button', { name: '30 m', exact: true }).click();
+  await expect(page.locator('.sprint table.tbl').first()).toBeVisible();
+  await expect(page.locator('.sprint .checks')).toContainText('improbable'); // 30 m en quelques images : le moteur alerte
+  await page.getByRole('button', { name: '30 m' }).click(); // remplace, ne duplique pas
+  await page.getByRole('button', { name: 'Repères', exact: true }).click();
+  await expect(page.locator('.events li')).toHaveCount(3); // départ, arrivée, un seul 30 m
+
   // Comparaison côte à côte
   await expect(page.getByRole('link', { name: 'Comparer au précédent' })).toBeVisible();
   await page.goto('./#/seances');

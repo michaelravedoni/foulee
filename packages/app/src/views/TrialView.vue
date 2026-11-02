@@ -29,6 +29,7 @@ import { formatBytes, formatDate, formatFps } from '../lib/format';
 import FramePlayer from '../components/FramePlayer.vue';
 import { isTypingTarget } from '../lib/keys';
 import TagEditor from '../components/TagEditor.vue';
+import SprintPanel from '../components/SprintPanel.vue';
 
 const props = defineProps<{ id: string }>();
 const router = useRouter();
@@ -43,7 +44,7 @@ const analysis = ref<Analysis>(analysisOf(props.id));
 const player = ref<InstanceType<typeof FramePlayer>>();
 const timeline = shallowRef<FrameTimeline | null>(null);
 const currentFrame = ref(0);
-const tab = ref<'reperes' | 'mesures' | 'infos'>('reperes');
+const tab = ref<'reperes' | 'epreuve' | 'mesures' | 'infos'>('reperes');
 
 watch(
   () => props.id,
@@ -90,12 +91,14 @@ const best = computed(() => others.value.find((x) => x.tags.includes('meilleur')
 
 // ——— Repères (événements) ———
 const fps = computed(() => timeline.value?.nominalFps ?? media.value?.nominalFps ?? 30);
-function mark(type: string, side?: 'G' | 'D') {
+function mark(type: string, side?: 'G' | 'D', position?: number) {
   const tl = timeline.value;
   if (!tl) return;
   const f = currentFrame.value;
-  const ev: MarkedEvent = { id: newId('evt'), type, frame: f, time: tl.timeOf(f), source: 'manuel', confidence: 1, ...(side ? { side } : {}) };
-  const events = [...analysis.value.events, ev].sort((a, b) => a.frame - b.frame);
+  const ev: MarkedEvent = { id: newId('evt'), type, frame: f, time: tl.timeOf(f), source: 'manuel', confidence: 1, ...(side ? { side } : {}), ...(position !== undefined ? { position } : {}) };
+  // Un repère positionné (passage, haie) remplace celui de même type et de même position.
+  const kept = position === undefined ? analysis.value.events : analysis.value.events.filter((x) => !(x.type === type && x.position === position));
+  const events = [...kept, ev].sort((a, b) => a.frame - b.frame);
   onAnalysis({ ...analysis.value, events });
 }
 function removeEvent(id: string) {
@@ -240,6 +243,7 @@ async function trash() {
       <aside class="side card">
         <div class="tabs">
           <button :class="{ active: tab === 'reperes' }" @click="tab = 'reperes'">Repères</button>
+          <button :class="{ active: tab === 'epreuve' }" @click="tab = 'epreuve'">Épreuve</button>
           <button :class="{ active: tab === 'mesures' }" @click="tab = 'mesures'">Mesures</button>
           <button :class="{ active: tab === 'infos' }" @click="tab = 'infos'">Essai</button>
         </div>
@@ -266,6 +270,16 @@ async function trash() {
           </ol>
           <p v-else class="muted small">Aucun repère.</p>
         </div>
+        <SprintPanel
+          v-else-if="tab === 'epreuve'"
+          :discipline="trial.discipline"
+          :analysis="analysis"
+          :timeline="timeline"
+          :fps="fps"
+          :time-scale="timeScale"
+          @mark="mark"
+          @seek="(f) => player?.seek(f)"
+        />
         <div v-else-if="tab === 'mesures'" class="stack measures">
           <p class="small muted">
             Mesures <strong>indicatives</strong> : valables dans le plan de l’étalon, caméra fixe et à peu près perpendiculaire à la piste.
