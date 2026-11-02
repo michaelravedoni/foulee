@@ -13,3 +13,6 @@ export * from './playback.js';
 export * from './measure.js';
 export * from './trialspec.js';
 export * from './sprint.js';
+export * from './audio.js';
+export * from './kinogram.js';
+export * from './virtual.js';

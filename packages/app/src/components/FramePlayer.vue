@@ -843,7 +843,15 @@ function toggleCompat() {
   void openSource(!compat.value);
 }
 
-defineExpose({ frame, timeline, playing, rate, seek, step, play, pause, setRate, showFrame });
+/** Image décodée à l'index donné (kinogramme, export) ; ne touche pas à l'affichage. */
+async function grab(i: number) {
+  const src = source.value;
+  const tl = timeline.value;
+  if (!src || !tl) return null;
+  return src.getFrame(tl.clamp(i));
+}
+
+defineExpose({ frame, timeline, playing, rate, seek, step, play, pause, setRate, showFrame, grab });
 
 const stageStyle = computed(() => ({
   aspectRatio: `${W.value} / ${H.value}`,

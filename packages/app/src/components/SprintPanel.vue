@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import {
   analyzeSprint,
   eventLabel,
@@ -9,7 +9,9 @@ import {
   type Analysis,
   type FrameTimeline,
   type MarkedEvent,
+  type SoundOnset,
 } from '@foulee/core';
+import { NoAudioError, scanAudioOnsets } from '@foulee/media';
 
 const props = defineProps<{
   discipline: string;
@@ -17,11 +19,37 @@ const props = defineProps<{
   timeline: FrameTimeline | null;
   fps: number;
   timeScale: number;
+  /** Fichier vidéo d'origine, pour lire la piste audio. */
+  original?: Blob | null;
 }>();
 const emit = defineEmits<{
   mark: [type: string, side?: 'G' | 'D', position?: number];
   seek: [frame: number];
+  remove: [id: string];
+  soundStart: [time: number, ratio: number];
 }>();
+
+// ——— Départ au son ———
+const gunDistance = ref('0');
+const scanning = ref(false);
+const scanError = ref('');
+const onsets = ref<SoundOnset[]>([]);
+async function scan() {
+  if (!props.original) return;
+  scanning.value = true;
+  scanError.value = '';
+  onsets.value = [];
+  try {
+    const d = Number(gunDistance.value.replace(',', '.'));
+    const r = await scanAudioOnsets(props.original, { distanceM: Number.isFinite(d) ? d : 0 });
+    onsets.value = r.onsets;
+    if (!r.onsets.length) scanError.value = 'Aucun son net détecté (enregistrement silencieux ou trop bruité).';
+  } catch (e) {
+    scanError.value = e instanceof NoAudioError ? e.message : `Lecture du son impossible : ${e instanceof Error ? e.message : String(e)}`;
+  } finally {
+    scanning.value = false;
+  }
+}
 
 const spec = computed(() => specFor(props.discipline));
 const result = computed(() => (spec.value && props.timeline ? analyzeSprint(spec.value, props.analysis.events, props.timeline, props.timeScale, props.fps) : null));
@@ -69,6 +97,23 @@ const label = (e: MarkedEvent) => eventLabel(e.type, e.side);
       </div>
     </section>
     <section class="stack">
+      <h3>Départ au son</h3>
+      <div class="row">
+        <label class="small muted">Distance au pistolet (m)
+          <input v-model="gunDistance" class="pos" inputmode="decimal" aria-label="Distance au pistolet en mètres" />
+        </label>
+        <button class="btn secondary small" :disabled="scanning || !original" @click="scan">{{ scanning ? 'Analyse…' : 'Détecter le départ' }}</button>
+      </div>
+      <p v-if="scanError" class="small warn-text" role="alert">{{ scanError }}</p>
+      <ul v-if="onsets.length" class="plain small">
+        <li v-for="(o, i) in onsets" :key="o.time" class="row">
+          <span class="grow mono">{{ frNumber(o.time, 3) }} s · niveau {{ frNumber(o.peak * 100, 0) }} %<template v-if="i === 0"> · le plus fort</template></span>
+          <button class="btn secondary small" @click="emit('soundStart', o.time, o.ratio)">Utiliser comme départ</button>
+        </li>
+      </ul>
+      <p class="small muted">Place le départ sur l’image où le son commence ; la précision est celle de l’image (le son est lu au 2 ms). Indique la distance au pistolet si le micro en est loin : le retard du son est retiré. Vérifie toujours l’image proposée.</p>
+    </section>
+    <section class="stack">
       <h3>Appuis</h3>
       <div class="row">
         <button class="btn secondary small" title="Appui gauche (a)" @click="emit('mark', 'appui', 'G')">Appui G</button>
@@ -76,6 +121,20 @@ const label = (e: MarkedEvent) => eventLabel(e.type, e.side);
         <button class="btn secondary small" title="Décollage gauche (z)" @click="emit('mark', 'decollage', 'G')">Décollage G</button>
         <button class="btn secondary small" title="Décollage droit (Maj+z)" @click="emit('mark', 'decollage', 'D')">Décollage D</button>
       </div>
+    </section>
+
+    <section class="stack">
+      <h3>Repères posés</h3>
+      <p v-if="!analysis.events.length" class="small muted">Aucun repère.</p>
+      <ul v-else class="plain small">
+        <li v-for="e in analysis.events" :key="e.id" class="row">
+          <button class="linklike grow" @click="emit('seek', e.frame)">
+            {{ label(e) }}<template v-if="e.position !== undefined"> · {{ frNumber(e.position, 2) }} m</template>
+            <span class="muted mono"> img {{ e.frame }}</span>
+          </button>
+          <button class="btn ghost small icon" :aria-label="`Supprimer ${label(e)} ${e.position !== undefined ? frNumber(e.position, 2) + ' m' : 'image ' + e.frame}`" @click="emit('remove', e.id)">✕</button>
+        </li>
+      </ul>
     </section>
 
     <template v-if="result">
@@ -89,13 +148,14 @@ const label = (e: MarkedEvent) => eventLabel(e.type, e.side);
         <h3>Splits</h3>
         <p v-if="!result.splits.length" class="small muted">Marque le départ puis au moins un passage ou l’arrivée.</p>
         <table v-else class="tbl small">
-          <thead><tr><th>Section</th><th>Temps</th><th>Cumulé</th><th>Vitesse</th></tr></thead>
+          <thead><tr><th>Section</th><th>Temps</th><th>Cumulé</th><th>Vitesse</th><th></th></tr></thead>
           <tbody>
             <tr v-for="r in result.splits" :key="r.from.id + r.to.id" @click="emit('seek', r.to.frame)">
               <td>{{ frNumber(r.fromM, 1) }}–{{ frNumber(r.toM, 1) }} m</td>
               <td class="mono">{{ secs(r.segment) }}</td>
               <td class="mono">{{ secs(r.cumulative) }}</td>
               <td class="mono">{{ fmt(r.speed, 'm/s') }}</td>
+              <td><button class="btn ghost small icon" :aria-label="`Supprimer le repère à ${frNumber(r.toM, 1)} m`" title="Supprimer ce repère" @click.stop="emit('remove', r.to.id)">✕</button></td>
             </tr>
           </tbody>
         </table>
@@ -196,6 +256,13 @@ const label = (e: MarkedEvent) => eventLabel(e.type, e.side);
   border: 1px solid var(--border, currentColor);
   border-radius: 6px;
   padding: 0 6px;
+  margin-left: 6px;
+}
+.warn-text {
+  color: var(--warn);
+}
+.pos {
+  width: 4.5em;
   margin-left: 6px;
 }
 </style>

@@ -12,6 +12,7 @@
   "dependencies": {
     "@foulee/core": "workspace:*",
     "@foulee/media": "workspace:*",
+    "@foulee/report": "workspace:*",
     "@foulee/vault": "workspace:*",
     "vue": "^3.5.44",
     "vue-router": "^5.4.0"
