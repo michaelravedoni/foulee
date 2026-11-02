@@ -90,7 +90,7 @@ Les paquets sont consommés directement en TypeScript (`exports` → `src/index.
 | Index de travail en IndexedDB | Index en mémoire reconstruit au démarrage | 10 à 50 athlètes : quelques centaines de petits JSON se lisent en quelques dizaines de ms. IndexedDB ajouterait un second état à synchroniser sans gain mesurable. À revoir si le démarrage dépasse ~300 ms. |
 | Paquets `report`, `vision` | Non créés | Pas de code avant les phases 4 et 8. |
 | Playwright WebKit | Chromium (ordinateur + format iPad) | Le WebKit Linux de Playwright ne décode pas le H.264 comme Safari iOS ; la validation iOS se fait sur l’appareil réel via la page Diagnostic. |
-| Angle | Outil d’angle simple inclus dans la barre de dessin | Utile tout de suite ; le goniomètre et les mesures calibrées restent en phase 2. |
+| Angle | Outil d’angle simple inclus dans la barre de dessin | Utile tout de suite ; la phase 2 y ajoute la marge d’erreur, l’étalon et les longueurs en mètres. |
 
 ## Risques suivis en phase 1
 

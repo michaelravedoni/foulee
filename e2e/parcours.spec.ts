@@ -128,6 +128,29 @@ test('séance complète : athlète, séance, import, image par image, dessin, co
   await expect(page.locator('svg.draw path')).toHaveCount(1);
   await expect(page.locator('.events li')).toHaveCount(1);
 
+  // Mesures : étalon de 10 m, longueur calibrée, trajectoire, chrono par sections
+  page.once('dialog', (d) => void d.accept('10'));
+  await page.getByRole('button', { name: /Étalon/ }).click();
+  const sb = (await page.locator('.stage').boundingBox())!;
+  await page.mouse.move(sb.x + sb.width * 0.2, sb.y + sb.height * 0.8);
+  await page.mouse.down();
+  await page.mouse.move(sb.x + sb.width * 0.6, sb.y + sb.height * 0.8, { steps: 4 });
+  await page.mouse.up();
+  await expect(page.locator('svg.draw .etalon text')).toContainText('10');
+  await expect(page.locator('svg.draw text', { hasText: /± .* m$/ })).toHaveCount(1); // la ligne porte sa longueur en mètres
+  await page.getByRole('button', { name: /Trajectoire/ }).click();
+  for (let i = 0; i < 3; i++) {
+    await page.mouse.click(sb.x + sb.width * (0.3 + 0.05 * i), sb.y + sb.height * 0.4);
+  }
+  await page.getByRole('button', { name: 'Mesures', exact: true }).click();
+  await expect(page.getByText(/Trajectoire 1 · 3 points/)).toBeVisible();
+  await expect(page.getByText(/px\/m, incertitude/)).toBeVisible();
+  await page.getByRole('button', { name: 'Repères', exact: true }).click();
+  await page.getByRole('button', { name: 'Arrivée', exact: true }).click();
+  await page.getByRole('button', { name: 'Mesures', exact: true }).click();
+  await expect(page.locator('table.sections tbody tr')).toHaveCount(1);
+  await expect(page.locator('table.sections tbody tr td.mono').first()).toContainText('±');
+
   // Comparaison côte à côte
   await expect(page.getByRole('link', { name: 'Comparer au précédent' })).toBeVisible();
   await page.goto('./#/seances');
