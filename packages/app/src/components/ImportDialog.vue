@@ -12,8 +12,6 @@ const athleteId = ref(props.athleteId ?? '');
 const newFirst = ref('');
 const newLast = ref('');
 const discipline = ref<DisciplineId>('100m');
-const camera = ref<Trial['camera']>('fixe');
-const shoes = ref<Trial['shoes'] | ''>('');
 const captureFps = ref<number | ''>('');
 const tags = ref<string[]>([]);
 const running = ref(false);
@@ -49,10 +47,6 @@ async function run() {
             sessionId: props.sessionId,
             athleteId: aid,
             discipline: discipline.value,
-            ...(camera.value ? { camera: camera.value } : {}),
-            ...(shoes.value ? { shoes: shoes.value } : {}),
-            ...(session.value?.surface ? { surface: session.value.surface } : {}),
-            ...(session.value?.lighting ? { lighting: session.value.lighting } : {}),
             ...(captureFps.value ? { captureFps: Number(captureFps.value) } : {}),
             tags: tags.value,
           }),
@@ -100,22 +94,6 @@ function cancel() {
           Épreuve
           <select v-model="discipline">
             <option v-for="d in DISCIPLINES" :key="d.id" :value="d.id">{{ d.label }}</option>
-          </select>
-        </label>
-        <label class="field">
-          Caméra
-          <select v-model="camera">
-            <option value="fixe">Fixe</option>
-            <option value="panoramique">Panoramique</option>
-          </select>
-        </label>
-        <label class="field">
-          Chaussures
-          <select v-model="shoes">
-            <option value="">—</option>
-            <option value="pointes">Pointes</option>
-            <option value="baskets">Baskets</option>
-            <option value="autre">Autre</option>
           </select>
         </label>
         <label class="field">

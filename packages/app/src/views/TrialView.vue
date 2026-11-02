@@ -3,11 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vu
 import { RouterLink, useRouter } from 'vue-router';
 import {
   BASIC_EVENT_TYPES,
-  CAMERA_LABELS,
   DISCIPLINES,
-  LIGHTING_LABELS,
-  SHOES_LABELS,
-  SURFACE_LABELS,
   athleteName,
   derivedTags,
   disciplineLabel,
@@ -218,34 +214,6 @@ async function trash() {
             </select>
           </label>
           <div class="form-grid">
-            <label class="field">
-              Caméra
-              <select :value="trial.camera ?? ''" @change="patch({ camera: (($event.target as HTMLSelectElement).value || undefined) as Trial['camera'] })">
-                <option value="">—</option>
-                <option v-for="(l, k) in CAMERA_LABELS" :key="k" :value="k">{{ l }}</option>
-              </select>
-            </label>
-            <label class="field">
-              Chaussures
-              <select :value="trial.shoes ?? ''" @change="patch({ shoes: (($event.target as HTMLSelectElement).value || undefined) as Trial['shoes'] })">
-                <option value="">—</option>
-                <option v-for="(l, k) in SHOES_LABELS" :key="k" :value="k">{{ l }}</option>
-              </select>
-            </label>
-            <label class="field">
-              Surface
-              <select :value="trial.surface ?? ''" @change="patch({ surface: (($event.target as HTMLSelectElement).value || undefined) as Trial['surface'] })">
-                <option value="">—</option>
-                <option v-for="(l, k) in SURFACE_LABELS" :key="k" :value="k">{{ l }}</option>
-              </select>
-            </label>
-            <label class="field">
-              Éclairage
-              <select :value="trial.lighting ?? ''" @change="patch({ lighting: (($event.target as HTMLSelectElement).value || undefined) as Trial['lighting'] })">
-                <option value="">—</option>
-                <option v-for="(l, k) in LIGHTING_LABELS" :key="k" :value="k">{{ l }}</option>
-              </select>
-            </label>
             <label class="field">
               Cadence réelle (i/s)
               <input
