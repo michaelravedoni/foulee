@@ -141,3 +141,18 @@ test('fonctionne hors-ligne après le premier chargement', async ({ page, contex
   await expect(page.getByRole('heading', { name: 'Replay différé' })).toBeVisible();
   await context.setOffline(false);
 });
+
+test('le mode Terrain ne casse pas la mise en page', async ({ page }) => {
+  await page.goto('./');
+  await expect(page.getByRole('heading', { name: 'Bonjour 👋' })).toBeVisible();
+  await page.getByRole('button', { name: 'Analyse' }).click();
+  await expect(page.getByRole('button', { name: 'Terrain' })).toBeVisible();
+  const width = await page.evaluate(() => [innerWidth, document.documentElement.getBoundingClientRect().width]);
+  expect(width[1]).toBe(width[0]);
+  // le mode persiste après rechargement
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Bonjour 👋' })).toBeVisible();
+  const again = await page.evaluate(() => [innerWidth, document.documentElement.getBoundingClientRect().width, document.documentElement.getBoundingClientRect().height]);
+  expect(again[1]).toBe(again[0]);
+  expect(again[2]).toBeGreaterThan(100);
+});
