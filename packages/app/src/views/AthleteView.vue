@@ -12,7 +12,16 @@ const props = defineProps<{ id: string }>();
 const router = useRouter();
 const athlete = computed(() => state.athletes.get(props.id));
 const draft = ref<Athlete | null>(null);
-watch(athlete, (a) => (draft.value = a ? { ...a, tags: [...a.tags] } : null), { immediate: true });
+// Le brouillon n'est repris depuis le coffre qu'à l'ouverture d'une fiche : sinon l'enregistrement d'un champ
+// écraserait ce que l'utilisateur est en train de saisir dans le suivant.
+watch(
+  athlete,
+  (a) => {
+    if (!a) draft.value = null;
+    else if (draft.value?.id !== a.id) draft.value = { ...a, tags: [...a.tags] };
+  },
+  { immediate: true },
+);
 
 const discipline = ref('');
 const selected = ref<string[]>([]);
