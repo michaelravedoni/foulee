@@ -496,3 +496,13 @@ progress {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* Mode Terrain : gros contrôles du lecteur (règles globales, pas de :global() dans les styles scoped,
+   que la minification réduit à `html.terrain` seul). */
+html.terrain .jog {
+  height: 56px;
+}
+html.terrain .swatch {
+  width: 40px;
+  height: 40px;
+}

@@ -979,9 +979,6 @@ const viewportStyle = computed(() => ({
   touch-action: none;
   cursor: ew-resize;
 }
-:global(html.terrain) .jog {
-  height: 56px;
-}
 .tick {
   width: 2px;
   height: 60%;
@@ -1025,10 +1022,6 @@ const viewportStyle = computed(() => ({
   border: 2px solid var(--border);
   cursor: pointer;
   padding: 0;
-}
-:global(html.terrain) .swatch {
-  width: 40px;
-  height: 40px;
 }
 .swatch.active {
   outline: 3px solid var(--accent);
