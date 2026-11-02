@@ -1,0 +1,6 @@
+packages:
+  - packages/*
+# N'installer que des versions publiées depuis au moins 14 jours (en minutes).
+minimumReleaseAge: 20160
+onlyBuiltDependencies:
+  - esbuild

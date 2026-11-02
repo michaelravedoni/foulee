@@ -1,0 +1,16 @@
+{
+  "name": "@foulee/media",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@foulee/core": "workspace:*",
+    "mediabunny": "1.61.6"
+  }
+}
