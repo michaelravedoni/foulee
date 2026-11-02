@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { LIGHTING_LABELS, SURFACE_LABELS, VENUE_LABELS, athleteName, type TrainingSession, type Trial } from '@foulee/core';
+import { athleteName, type TrainingSession, type Trial } from '@foulee/core';
 import { moveToTrash, saveSession, state, trialsOfSession } from '../store/data';
 import { formatDate } from '../lib/format';
 import ImportDialog from '../components/ImportDialog.vue';
@@ -72,27 +72,6 @@ function imported(trials: Trial[]) {
         <label class="field">Date <input v-model="draft.date" type="date" @change="save" /></label>
         <label class="field">Titre <input v-model="draft.title" placeholder="ex. Vitesse – départs" @input="save" /></label>
         <label class="field">Lieu <input v-model="draft.place" placeholder="ex. Halle de Sion" @input="save" /></label>
-        <label class="field">
-          Type
-          <select v-model="draft.venue" @change="save">
-            <option :value="undefined">—</option>
-            <option v-for="(l, k) in VENUE_LABELS" :key="k" :value="k">{{ l }}</option>
-          </select>
-        </label>
-        <label class="field">
-          Éclairage
-          <select v-model="draft.lighting" @change="save">
-            <option :value="undefined">—</option>
-            <option v-for="(l, k) in LIGHTING_LABELS" :key="k" :value="k">{{ l }}</option>
-          </select>
-        </label>
-        <label class="field">
-          Surface
-          <select v-model="draft.surface" @change="save">
-            <option :value="undefined">—</option>
-            <option v-for="(l, k) in SURFACE_LABELS" :key="k" :value="k">{{ l }}</option>
-          </select>
-        </label>
         <label class="field">Météo <input v-model="draft.weather" placeholder="ex. 12 °C, vent de face" @input="save" /></label>
       </div>
       <TagEditor v-model="draft.tags" @update:model-value="save" />
