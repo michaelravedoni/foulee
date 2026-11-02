@@ -7,6 +7,7 @@ export const BASIC_EVENT_TYPES = [
   { id: 'depart', label: 'Départ', key: 'd', sided: false },
   { id: 'appui', label: 'Appui', key: 'a', sided: true },
   { id: 'decollage', label: 'Décollage', key: 'z', sided: true },
+  { id: 'haie', label: 'Haie', key: 'h', sided: false },
   { id: 'passage', label: 'Passage repère', key: 'p', sided: false },
   { id: 'appel', label: 'Appel', key: 'c', sided: true },
   { id: 'lacher', label: 'Lâcher', key: 'l', sided: false },

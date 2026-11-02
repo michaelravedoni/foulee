@@ -112,3 +112,15 @@ Les paquets sont consommés directement en TypeScript (`exports` → `src/index.
 | vite-plugin-pwa, workbox | MIT | Service worker |
 
 La licence du projet est provisoirement « tous droits réservés » (voir `LICENSE`).
+
+## Phase 3 : spécifications d’épreuve (sprint et haies)
+
+- `packages/core/src/trialspec.ts` : spécifications déclaratives (100, 200, 400 m, 100/110/400 m haies) avec positions de
+  passage, haies (première, espacement, nombre), cadence minimale pour le temps de contact et seuils de plausibilité. Les
+  distances de haies sont les valeurs standard senior (à vérifier par catégorie et saison). Les seuils sont des garde-fous
+  à valider avec des entraîneurs.
+- `packages/core/src/sprint.ts` : fonctions pures. Splits avec marge (au plus une image par extrémité), vitesses, profil
+  Vmax/τ (modèle mono-exponentiel ajusté par moindres carrés, marges à 2 écarts-types, F0 = Vmax/τ, Pmax = F0·Vmax/4),
+  pas, fréquence, contacts, vol, contrôles. Tests sur un 100 m synthétique de référence.
+- Pas encore faits (à venir) : photo-finish par fente, détection de départ au son, kinogramme semi-manuel, indice de
+  technique des haies, héritage entre spécifications au-delà du sprint.

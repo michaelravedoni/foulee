@@ -11,3 +11,5 @@ export * from './events.js';
 export * from './validate.js';
 export * from './playback.js';
 export * from './measure.js';
+export * from './trialspec.js';
+export * from './sprint.js';

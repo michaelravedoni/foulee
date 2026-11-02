@@ -105,6 +105,8 @@ sont pas stockés dans `tags[]` (qui ne contient que les tags libres et rapides)
 Champs facultatifs ajoutés en phase 2 (le format reste `analysis@1` : un lecteur plus ancien les ignore) :
 
 - `events[].position` : position du repère le long de la piste, en mètres depuis le départ (saisie manuelle).
+  Phase 3 : types d’événements supplémentaires `haie` ; les passages et haies portent la position du repère, l’arrivée
+  prend la distance de l’épreuve par défaut. Les splits, foulées, contacts et le profil Vmax/τ sont **recalculés**, jamais stockés.
 - `calibration` : étalon `{ "a": {x,y}, "b": {x,y}, "meters": 10, "clickErrorPx": 2 }`. `a` et `b` sont en pixels de
   l’image, `meters` est la longueur réelle du segment. Sans étalon, aucune mesure n’est donnée en mètres.
 - `trajectories[]` : `{ "id": "trj_…", "label", "color", "points": [{ "frame", "x", "y" }] }`, un point par image pointée.
