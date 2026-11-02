@@ -26,7 +26,6 @@ async function reset() {
   await resetLocalStorage();
   location.reload();
 }
-const logo = `${import.meta.env.BASE_URL}favicon.svg`;
 const jobs = computed(() => [...state.jobs.values()]);
 </script>
 
@@ -34,7 +33,6 @@ const jobs = computed(() => [...state.jobs.values()]);
   <div class="shell" :class="{ terrain: settings.terrain }">
     <header class="topbar">
       <RouterLink to="/" class="brand" aria-label="Accueil Foulée">
-        <img :src="logo" alt="" width="28" height="28" />
         <span>Foulée</span>
       </RouterLink>
       <nav class="mainnav" aria-label="Navigation principale">
@@ -54,7 +52,7 @@ const jobs = computed(() => [...state.jobs.values()]);
         >
           {{ settings.terrain ? 'Terrain' : 'Analyse' }}
         </button>
-        <button class="btn ghost small" title="Verrouiller l’écran" aria-label="Verrouiller l’écran" @click="locked = true">🔒</button>
+        <button class="btn ghost small" title="Verrouiller l’écran" aria-label="Verrouiller l’écran" @click="locked = true">Verrouiller</button>
       </div>
     </header>
 

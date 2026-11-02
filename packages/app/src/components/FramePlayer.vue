@@ -996,20 +996,21 @@ const viewportStyle = computed(() => ({
                   font-weight="700"
                 >{{ a.text }}</text>
               </g>
-              <g v-if="calibration || etalonDraft" class="etalon" stroke="#00e5ff" fill="none">
+              <g v-if="calibration || etalonDraft" class="etalon" style="stroke: var(--overlay-primary)" fill="none">
                 <path
                   :d="etalonDraft ? `M${etalonDraft.a.x} ${etalonDraft.a.y} L${etalonDraft.b.x} ${etalonDraft.b.y}` : `M${calibration!.a.x} ${calibration!.a.y} L${calibration!.b.x} ${calibration!.b.y}`"
                   stroke-width="3"
                   stroke-dasharray="10 6"
                   vector-effect="non-scaling-stroke"
                 />
-                <circle :cx="(etalonDraft ?? calibration!).a.x" :cy="(etalonDraft ?? calibration!).a.y" :r="fontSize * 0.2" fill="#00e5ff" stroke="none" />
-                <circle :cx="(etalonDraft ?? calibration!).b.x" :cy="(etalonDraft ?? calibration!).b.y" :r="fontSize * 0.2" fill="#00e5ff" stroke="none" />
-                <text v-if="calibration && !etalonDraft" :x="(calibration.a.x + calibration.b.x) / 2" :y="(calibration.a.y + calibration.b.y) / 2 - fontSize * 0.5" :font-size="fontSize" fill="#00e5ff" stroke="#000" :stroke-width="fontSize * 0.08" paint-order="stroke" font-weight="700" text-anchor="middle">étalon {{ frNumber(calibration.meters, 2) }} m</text>
+                <circle :cx="(etalonDraft ?? calibration!).a.x" :cy="(etalonDraft ?? calibration!).a.y" :r="fontSize * 0.2" style="fill: var(--overlay-primary)" stroke="none" />
+                <circle :cx="(etalonDraft ?? calibration!).b.x" :cy="(etalonDraft ?? calibration!).b.y" :r="fontSize * 0.2" style="fill: var(--overlay-primary)" stroke="none" />
+                <text v-if="calibration && !etalonDraft" :x="(calibration.a.x + calibration.b.x) / 2" :y="(calibration.a.y + calibration.b.y) / 2 - fontSize * 0.5" :font-size="fontSize" style="fill: var(--overlay-primary)" stroke="#000" :stroke-width="fontSize * 0.08" paint-order="stroke" font-weight="700" text-anchor="middle">étalon {{ frNumber(calibration.meters, 2) }} m</text>
               </g>
-              <g v-if="skeletonLines" class="skeleton" stroke="#22d3ee" fill="#22d3ee">
-                <path :d="skeletonLines.lines" fill="none" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linecap="round" opacity="0.9" />
-                <circle v-for="(d, i) in skeletonLines.dots" :key="i" :cx="d.x" :cy="d.y" :r="fontSize * 0.14" stroke="none" opacity="0.9" />
+              <g v-if="skeletonLines" class="skeleton" style="stroke: var(--overlay-primary); fill: var(--overlay-primary)">
+                <path :d="skeletonLines.lines" fill="none" stroke="#000" stroke-width="6" vector-effect="non-scaling-stroke" stroke-linecap="round" opacity="0.55" />
+                <path :d="skeletonLines.lines" fill="none" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linecap="round" />
+                <circle v-for="(d, i) in skeletonLines.dots" :key="i" :cx="d.x" :cy="d.y" :r="fontSize * 0.14" stroke="none" />
               </g>
               <g v-for="t in trajectories" :key="t.id" :stroke="t.color" fill="none">
                 <path :d="trackPath(t)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" opacity="0.8" />

@@ -55,7 +55,7 @@ const metricText = (m: { value: { value: number; margin: number }; digits: numbe
           <tbody>
             <tr v-for="m in result.metrics" :key="m.id" :class="{ unreliable: m.reliable === false }">
               <td>{{ m.label }}<span v-if="m.indicative" class="tag-indic">indicatif</span></td>
-              <td class="mono">{{ metricText(m) }}<span v-if="m.reliable === false" title="Cadence trop faible"> ⚠</span></td>
+              <td class="mono">{{ metricText(m) }}<span v-if="m.reliable === false" class="small muted" title="Cadence trop faible"> · cadence faible</span></td>
             </tr>
           </tbody>
         </table>

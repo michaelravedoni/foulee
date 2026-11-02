@@ -195,7 +195,7 @@ const label = (e: MarkedEvent) => eventLabel(e.type, e.side);
           <tbody>
             <tr v-for="c in result.contacts" :key="c.on.id" :class="{ unreliable: !c.reliable }" @click="emit('seek', c.on.frame)">
               <td>{{ label(c.on) }} · img {{ c.on.frame }}</td>
-              <td class="mono">{{ fmt({ value: c.contact.value * 1000, margin: c.contact.margin * 1000 }, 'ms') }}<span v-if="!c.reliable" title="Cadence trop faible"> ⚠</span></td>
+              <td class="mono">{{ fmt({ value: c.contact.value * 1000, margin: c.contact.margin * 1000 }, 'ms') }}<span v-if="!c.reliable" class="small muted" title="Cadence trop faible"> · cadence faible</span></td>
               <td class="mono">{{ c.flight ? fmt({ value: c.flight.value * 1000, margin: c.flight.margin * 1000 }, 'ms') : '—' }}</td>
             </tr>
           </tbody>
