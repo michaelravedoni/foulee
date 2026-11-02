@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import {
+  analyzeJump,
   analyzeSprint,
+  jumpSpecFor,
   athleteName,
   realTimeScale,
   specFor,
@@ -11,7 +13,7 @@ import {
   type Trial,
 } from '@foulee/core';
 import type { FrameImage } from '@foulee/media';
-import type { HistoryTrial, ReportImage, ReportInput } from '@foulee/report';
+import type { HistoryTrial, JumpHistoryTrial, JumpReportInput, ReportImage, ReportInput } from '@foulee/report';
 import { analysisOf, mediaOf, state, trialsOfAthlete } from '../store/data';
 import { formatDate } from '../lib/format';
 
@@ -24,6 +26,7 @@ const props = defineProps<{
 }>();
 
 const spec = computed(() => specFor(props.trial.discipline));
+const jump = computed(() => jumpSpecFor(props.trial.discipline));
 const busy = ref('');
 const error = ref('');
 
@@ -68,6 +71,10 @@ async function keyImages(): Promise<ReportImage[]> {
     const last = tl.frameCount - 1;
     frames = [0, Math.round(last / 2), last].map((f, i) => ({ f, label: ['Début', 'Milieu', 'Fin'][i]! }));
   }
+  return imagesAt(frames);
+}
+
+async function imagesAt(frames: { f: number; label: string }[]): Promise<ReportImage[]> {
   const out: ReportImage[] = [];
   for (const { f, label } of frames) {
     const img = await props.grab(f);
@@ -83,6 +90,62 @@ async function keyImages(): Promise<ReportImage[]> {
     out.push({ label: `${label} · img ${f}`, dataUrl: c.toDataURL('image/jpeg', 0.8), width: w, height: h });
   }
   return out;
+}
+
+function jumpHistory(): JumpHistoryTrial[] {
+  const js = jump.value;
+  if (!js) return [];
+  const cur = props.trial;
+  const sessionDate = (t: Trial) => state.sessions.get(t.sessionId)?.date ?? t.createdAt.slice(0, 10);
+  return trialsOfAthlete(cur.athleteId)
+    .filter((t) => t.id !== cur.id && t.discipline === cur.discipline && !t.deletedAt)
+    .map((t) => ({ t, an: analysisOf(t.id), media: mediaOf(t) }))
+    .filter(({ an }) => an.events.length >= 2)
+    .map(({ t, an, media }) => {
+      const f = media?.nominalFps ?? props.fps;
+      const date = sessionDate(t);
+      return { id: t.id, label: `${formatDate(date)} · essai ${t.number}`, date, analysis: analyzeJump(js, an.events, timeSourceFromEvents(an.events, f), realTimeScale(f, t.captureFps), f) };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Images clés d'un saut : appel, décollage, sommet ou réception (celles qui sont marquées). */
+async function jumpImages(): Promise<ReportImage[]> {
+  const wanted: [string, string][] = [['appel', 'Appel'], ['decollage', 'Décollage'], ['sommet', 'Sommet'], ['lacher', 'Lâcher'], ['reception', 'Réception']];
+  const frames = wanted
+    .map(([type, label]) => ({ f: props.analysis.events.find((e) => e.type === type)?.frame, label }))
+    .filter((x): x is { f: number; label: string } => x.f !== undefined)
+    .slice(0, 6);
+  return imagesAt(frames);
+}
+
+async function buildJumpInput(withImages: boolean): Promise<JumpReportInput | null> {
+  const js = jump.value;
+  const tl = props.timeline;
+  if (!js || !tl) return null;
+  const t = props.trial;
+  const session = state.sessions.get(t.sessionId);
+  const athlete = state.athletes.get(t.athleteId);
+  const media = mediaOf(t);
+  return {
+    athleteName: athlete ? athleteName(athlete) : '-',
+    disciplineLabel: js.label,
+    jump: js.id,
+    date: session?.date ?? t.createdAt.slice(0, 10),
+    ...(session?.place ? { place: session.place } : {}),
+    ...(session?.weather ? { weather: session.weather } : {}),
+    trialNumber: t.number,
+    notes: t.notes,
+    ...(t.officialResult ? { officialResult: t.officialResult } : {}),
+    nominalFps: media?.nominalFps ?? props.fps,
+    ...(t.captureFps ? { captureFps: t.captureFps } : {}),
+    ...(props.analysis.calibration ? { calibration: props.analysis.calibration } : {}),
+    specDataVersion: js.dataVersion,
+    analysis: analyzeJump(js, props.analysis.events, tl, realTimeScale(props.fps, t.captureFps), props.fps),
+    history: jumpHistory(),
+    images: withImages ? await jumpImages() : [],
+    generatedAt: new Date().toISOString(),
+  };
 }
 
 async function buildInput(withImages: boolean): Promise<ReportInput | null> {
@@ -134,9 +197,19 @@ async function run(kind: 'athlete' | 'coach' | 'csv' | 'csvHistory') {
   busy.value = kind;
   error.value = '';
   try {
-    const input = await buildInput(kind === 'athlete' || kind === 'coach');
-    if (!input) throw new Error('la vidéo n’est pas encore prête');
+    const withImages = kind === 'athlete' || kind === 'coach';
     const report = await import('@foulee/report');
+    if (jump.value) {
+      const ji = await buildJumpInput(withImages);
+      if (!ji) throw new Error('la vidéo n’est pas encore prête');
+      if (kind === 'athlete') save(await report.renderPdf(report.buildJumpAthleteReport(ji)), 'application/pdf', `${fileBase.value}-athlete.pdf`);
+      else if (kind === 'coach') save(await report.renderPdf(report.buildJumpCoachReport(ji)), 'application/pdf', `${fileBase.value}-coach.pdf`);
+      else if (kind === 'csv') save('﻿' + report.csvJump(ji), 'text/csv;charset=utf-8', `${fileBase.value}.csv`);
+      else save('﻿' + report.csvJumpHistory(ji), 'text/csv;charset=utf-8', `${fileBase.value}-historique.csv`);
+      return;
+    }
+    const input = await buildInput(withImages);
+    if (!input) throw new Error('la vidéo n’est pas encore prête');
     if (kind === 'athlete') save(await report.renderPdf(report.buildAthleteReport(input)), 'application/pdf', `${fileBase.value}-athlete.pdf`);
     else if (kind === 'coach') save(await report.renderPdf(report.buildCoachReport(input)), 'application/pdf', `${fileBase.value}-coach.pdf`);
     else if (kind === 'csv') save('﻿' + report.csvTrial(input), 'text/csv;charset=utf-8', `${fileBase.value}.csv`);
@@ -150,8 +223,8 @@ async function run(kind: 'athlete' | 'coach' | 'csv' | 'csvHistory') {
 </script>
 
 <template>
-  <div v-if="!spec" class="stack">
-    <p class="small muted">Les rapports couvrent pour l’instant le sprint et les haies.</p>
+  <div v-if="!spec && !jump" class="stack">
+    <p class="small muted">Les rapports couvrent pour l’instant le sprint, les haies et les sauts.</p>
   </div>
   <div v-else class="stack">
     <p class="small muted">

@@ -157,3 +157,19 @@ La licence du projet est provisoirement « tous droits réservés » (voir `LICE
   dans l'interface : seule la sauvegarde manuelle l'est. Pas d'archive ZIP chiffrée : l'export ZIP reste en clair.
 - Écran Sauvegardes : destinations, test de connexion, « Sauvegarder maintenant », « Restaurer sur cet appareil » (réinstallation
   sur un autre appareil). La phrase secrète n'est jamais enregistrée.
+
+## Phase 6 : sauts (longueur, triple saut, hauteur, perche)
+
+- `jumpspec.ts` : un gabarit déclaratif par saut (événements attendus, obligatoires ou non, aide de placement, signification du champ
+  « position » : distance ou hauteur de barre, seuils de plausibilité, version des données). L'interface et le moteur lisent la même liste.
+- `jumps.ts` (`analyzeJump`) : fonction pure `spec + repères + source de temps → mesures, phases, foulées d'élan, contrôles, repères manquants`.
+  Les foulées d'élan réutilisent `analyzeStrides` (sprint) sur les seuls repères antérieurs à l'appel. La chaîne appel → décollage →
+  appui/réception donne les contacts, vols et, si les positions sont saisies, la distance et la part de chaque phase (triple saut : trois).
+- Longueur du saut = position de la réception − position de l'appel (marge ≈ 7 cm). Elle ne remplace pas la mesure officielle.
+- Estimations balistiques **indicatives** (g = 9,81 m/s²) : montée du centre de gravité (g·T²/8 depuis le temps de vol, ou ½·g·t² depuis le
+  sommet / le lâcher), vitesse verticale d'envol, angle d'envol (longueur ÷ temps de vol). Marges relatives doublées pour les termes quadratiques.
+- Hauteur et perche : résultat = hauteur de barre saisie (position du repère « barre »). Perche : pose → appel, appel → lâcher, lâcher → sommet.
+- Temps d'appel marqué non fiable sous 120 i/s. Seuils de plausibilité à valider avec des entraîneurs.
+- Rapports : `jumpreport.ts` (athlète / coach), `jumpcsv.ts` ; `ReportPanel.vue` choisit selon `jumpSpecFor`. L'historique est recalculé avec `analyzeJump`.
+- Limites : aucune validation sur de vrais sauts ; pas de détection de la planche ou de la barre ; les repères uniques (appel, réception,
+  sommet, pose, lâcher, barre) sont remplacés quand on les replace.

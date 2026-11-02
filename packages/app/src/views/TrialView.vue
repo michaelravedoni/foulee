@@ -18,6 +18,7 @@ import {
   trajectoryLength,
   trajectorySpeeds,
   newId,
+  jumpSpecFor,
   realTimeScale,
   type Analysis,
   type FrameTimeline,
@@ -30,6 +31,7 @@ import FramePlayer from '../components/FramePlayer.vue';
 import { isTypingTarget } from '../lib/keys';
 import TagEditor from '../components/TagEditor.vue';
 import SprintPanel from '../components/SprintPanel.vue';
+import JumpPanel from '../components/JumpPanel.vue';
 import KinogramPanel from '../components/KinogramPanel.vue';
 import ReportPanel from '../components/ReportPanel.vue';
 
@@ -91,6 +93,8 @@ const previous = computed(() => {
 });
 const best = computed(() => others.value.find((x) => x.tags.includes('meilleur')));
 
+const SINGLE_JUMP_EVENTS = ['appel', 'reception', 'sommet', 'planter', 'lacher', 'barre'];
+
 // ——— Repères (événements) ———
 const fps = computed(() => timeline.value?.nominalFps ?? media.value?.nominalFps ?? 30);
 function mark(type: string, side?: 'G' | 'D', position?: number) {
@@ -98,8 +102,11 @@ function mark(type: string, side?: 'G' | 'D', position?: number) {
   if (!tl) return;
   const f = currentFrame.value;
   const ev: MarkedEvent = { id: newId('evt'), type, frame: f, time: tl.timeOf(f), source: 'manuel', confidence: 1, ...(side ? { side } : {}), ...(position !== undefined ? { position } : {}) };
-  // Un repère positionné (passage, haie) remplace celui de même type et de même position.
-  const kept = position === undefined ? analysis.value.events : analysis.value.events.filter((x) => !(x.type === type && x.position === position));
+  // Un repère positionné (passage, haie) remplace celui de même type et de même position ;
+  // dans un saut, les repères uniques (appel, réception, sommet…) sont remplacés.
+  const kept = jumpSpecFor(trial.value?.discipline ?? '') && SINGLE_JUMP_EVENTS.includes(type)
+    ? analysis.value.events.filter((x) => x.type !== type)
+    : position === undefined ? analysis.value.events : analysis.value.events.filter((x) => !(x.type === type && x.position === position));
   const events = [...kept, ev].sort((a, b) => a.frame - b.frame);
   onAnalysis({ ...analysis.value, events });
 }
@@ -286,6 +293,17 @@ async function trash() {
           </ol>
           <p v-else class="muted small">Aucun repère.</p>
         </div>
+        <JumpPanel
+          v-else-if="tab === 'epreuve' && jumpSpecFor(trial.discipline)"
+          :discipline="trial.discipline"
+          :analysis="analysis"
+          :timeline="timeline"
+          :fps="fps"
+          :time-scale="timeScale"
+          @mark="mark"
+          @seek="(f) => player?.seek(f)"
+          @remove="removeEvent"
+        />
         <SprintPanel
           v-else-if="tab === 'epreuve'"
           :discipline="trial.discipline"
