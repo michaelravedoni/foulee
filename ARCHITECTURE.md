@@ -128,3 +128,17 @@ La licence du projet est provisoirement « tous droits réservés » (voir `LICE
 - Kinogramme semi-manuel (`core/kinogram.ts`, `KinogramPanel.vue`) : planche d'images aux repères marqués ou régulières,
   export PNG. Les dessins ne sont pas inclus.
 - Pas encore faits : photo-finish par fente, indice de technique des haies, héritage entre spécifications au-delà du sprint.
+
+## Phase 4 : rapports PDF et export tableur
+
+- Paquet `packages/report` : construction du contenu (`build.ts`, fonctions pures testées), règles « ce qui va bien / à
+  travailler » (`insights.ts`), glossaire pédagogique, rendu PDF A4 avec jsPDF chargé à la demande (`pdf.ts`), CSV (`csv.ts`).
+- Rapport athlète (1 à 2 pages) : images clés, trois chiffres avec flèche mieux/moins bien **seulement si l'écart dépasse la marge**
+  par rapport à l'essai précédent, points forts, points à travailler, consigne. Rapport coach : protocole, résultats, splits,
+  graphique de vitesse, profil, pas, contacts, contrôles, historique avec meilleur essai et meilleur virtuel, notes, annexes
+  (méthode, glossaire).
+- L'historique est recalculé depuis les repères enregistrés (`timeSourceFromEvents`), sans recharger les vidéos.
+- Les polices PDF standard ne couvrent que le latin-1 : `pdfText` remplace les autres caractères (ex. τ devient « tau »).
+- Pas de fichier PDF ni d'entité « Rapport » stockés dans le coffre : les rapports sont régénérés à la demande.
+- Excel : CSV « ; » avec virgule décimale et BOM UTF-8 (s'ouvre directement dans Excel en français), pas de .xlsx.
+- Seuils à valider avec des entraîneurs : perte de vitesse en fin de course (4 %), plausibilité des contacts et fréquences.

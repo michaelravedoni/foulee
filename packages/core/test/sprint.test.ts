@@ -115,3 +115,26 @@ describe('foulées', () => {
     expect(a.checks.some((c) => /trop incertain/.test(c.message))).toBe(true);
   });
 });
+
+import { timeSourceFromEvents, virtualBest } from '../src/index.js';
+
+describe('historique', () => {
+  const spec = specFor('100m')!;
+  it('analyse un essai sans chronologie complète, à partir des repères', () => {
+    const events = reference100();
+    const a = analyzeSprint(spec, events, timeSourceFromEvents(events, FPS), 1, FPS);
+    const b = analyzeSprint(spec, events, tl, 1, FPS);
+    expect(a.splits).toHaveLength(b.splits.length);
+    expect(a.total!.value).toBeCloseTo(b.total!.value, 6);
+  });
+
+  it('combine les meilleurs temps de section (meilleur virtuel)', () => {
+    const slowStart = analyzeSprint(spec, reference100(11.8, 1.6), tl, 1, FPS).splits;
+    const fastStart = analyzeSprint(spec, reference100(11.2, 0.9), tl, 1, FPS).splits;
+    const v = virtualBest([slowStart, fastStart])!;
+    expect(v.sections).toHaveLength(10);
+    const totals = [slowStart, fastStart].map((s) => s[s.length - 1]!.cumulative.value);
+    expect(v.total.value).toBeLessThanOrEqual(Math.min(...totals) + 1e-9);
+    expect(virtualBest([slowStart])).toBeUndefined();
+  });
+});

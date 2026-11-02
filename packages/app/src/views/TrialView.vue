@@ -31,6 +31,7 @@ import { isTypingTarget } from '../lib/keys';
 import TagEditor from '../components/TagEditor.vue';
 import SprintPanel from '../components/SprintPanel.vue';
 import KinogramPanel from '../components/KinogramPanel.vue';
+import ReportPanel from '../components/ReportPanel.vue';
 
 const props = defineProps<{ id: string }>();
 const router = useRouter();
@@ -45,7 +46,7 @@ const analysis = ref<Analysis>(analysisOf(props.id));
 const player = ref<InstanceType<typeof FramePlayer>>();
 const timeline = shallowRef<FrameTimeline | null>(null);
 const currentFrame = ref(0);
-const tab = ref<'reperes' | 'epreuve' | 'mesures' | 'kino' | 'infos'>('reperes');
+const tab = ref<'reperes' | 'epreuve' | 'mesures' | 'kino' | 'rapport' | 'infos'>('reperes');
 
 watch(
   () => props.id,
@@ -259,6 +260,7 @@ async function trash() {
           <button :class="{ active: tab === 'epreuve' }" @click="tab = 'epreuve'">Épreuve</button>
           <button :class="{ active: tab === 'mesures' }" @click="tab = 'mesures'">Mesures</button>
           <button :class="{ active: tab === 'kino' }" @click="tab = 'kino'">Kinogramme</button>
+          <button :class="{ active: tab === 'rapport' }" @click="tab = 'rapport'">Rapports</button>
           <button :class="{ active: tab === 'infos' }" @click="tab = 'infos'">Essai</button>
         </div>
         <div v-if="tab === 'reperes'" class="stack">
@@ -296,6 +298,14 @@ async function trash() {
           @sound-start="soundStart"
           @seek="(f) => player?.seek(f)"
           @remove="removeEvent"
+        />
+        <ReportPanel
+          v-else-if="tab === 'rapport'"
+          :trial="trial"
+          :analysis="analysis"
+          :timeline="timeline"
+          :fps="fps"
+          :grab="grabFrame"
         />
         <KinogramPanel
           v-else-if="tab === 'kino'"

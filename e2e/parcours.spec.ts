@@ -177,6 +177,18 @@ test('séance complète : athlète, séance, import, image par image, dessin, co
   await page.getByRole('button', { name: /Générer/ }).click();
   await expect(page.getByRole('button', { name: 'Télécharger en PNG' })).toBeVisible({ timeout: 20_000 });
 
+  // Rapports : deux PDF et un CSV, générés sur l'appareil
+  await page.getByRole('button', { name: 'Rapports', exact: true }).click();
+  for (const [button, suffix] of [['PDF athlète', 'athlete.pdf'], ['PDF coach', 'coach.pdf']] as const) {
+    const [download] = await Promise.all([page.waitForEvent('download', { timeout: 30_000 }), page.getByRole('button', { name: button }).click()]);
+    expect(download.suggestedFilename()).toContain(suffix);
+    const path = await download.path();
+    const head = (await import('node:fs')).readFileSync(path).subarray(0, 5).toString('latin1');
+    expect(head).toBe('%PDF-');
+  }
+  const [csv] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'CSV de l’essai' }).click()]);
+  expect(csv.suggestedFilename()).toMatch(/\.csv$/);
+
   // Comparaison côte à côte
   await expect(page.getByRole('link', { name: 'Comparer au précédent' })).toBeVisible();
   await page.goto('./#/seances');

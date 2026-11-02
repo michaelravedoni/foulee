@@ -1,5 +1,18 @@
 import type { MarkedEvent } from './model.js';
-import type { FrameTimeline } from './timeline.js';
+/** Source de temps : une chronologie complète, ou seulement les repères d'un essai (historique). */
+export interface TimeSource {
+  timeOf(frame: number): number;
+  durationOf(frame: number): number;
+}
+
+/** Source de temps reconstruite à partir des repères (temps média enregistrés) et de la cadence nominale. */
+export function timeSourceFromEvents(events: readonly MarkedEvent[], fps: number): TimeSource {
+  const byFrame = new Map(events.map((e) => [e.frame, e.time] as const));
+  return {
+    timeOf: (f) => byFrame.get(f) ?? f / fps,
+    durationOf: () => 1 / fps,
+  };
+}
 import type { Measure } from './measure.js';
 import type { TrialSpec } from './trialspec.js';
 
@@ -63,7 +76,7 @@ export interface SprintAnalysis {
 /** Marge sur la position d'un appui lue à l'écran, en mètres (pointage). */
 export const FOOT_POSITION_MARGIN_M = 0.05;
 
-function timeMargin(tl: FrameTimeline, a: number, b: number, scale: number): number {
+function timeMargin(tl: TimeSource, a: number, b: number, scale: number): number {
   return ((tl.durationOf(a) + tl.durationOf(b)) / 2) * scale;
 }
 
@@ -79,7 +92,7 @@ function positioned(events: readonly MarkedEvent[], spec: TrialSpec): MarkedEven
   return out;
 }
 
-export function analyzeSprint(spec: TrialSpec, events: readonly MarkedEvent[], tl: FrameTimeline, timeScale: number, fps: number): SprintAnalysis {
+export function analyzeSprint(spec: TrialSpec, events: readonly MarkedEvent[], tl: TimeSource, timeScale: number, fps: number): SprintAnalysis {
   const checks: Check[] = [];
   const pts = positioned(events, spec);
   const start = pts.find((p) => p.type === 'depart');
@@ -207,7 +220,7 @@ function fitProfile(splits: SplitRow[]): SprintProfile | undefined {
 function analyzeStrides(
   spec: TrialSpec,
   events: readonly MarkedEvent[],
-  tl: FrameTimeline,
+  tl: TimeSource,
   scale: number,
   fps: number,
   checks: Check[],
