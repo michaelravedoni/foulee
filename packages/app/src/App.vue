@@ -40,6 +40,7 @@ const jobs = computed(() => [...state.jobs.values()]);
         <RouterLink to="/seances">Séances</RouterLink>
         <RouterLink to="/comparer">Comparer</RouterLink>
         <RouterLink to="/replay">Replay</RouterLink>
+        <RouterLink to="/normes">Normes</RouterLink>
         <RouterLink to="/coffre">Coffre</RouterLink>
       </nav>
       <div class="topbar-right">

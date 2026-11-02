@@ -20,6 +20,8 @@ export interface JumpReportInput {
   weather?: string;
   trialNumber: number;
   notes: string;
+  /** Lignes « Références » (normes comparées, avec leur source) ; vide = section omise. */
+  refs?: string[];
   officialResult?: string;
   nominalFps: number;
   captureFps?: number;
@@ -202,6 +204,10 @@ export function buildJumpCoachReport(input: JumpReportInput): ReportDoc {
     });
   }
 
+  if (input.refs?.length) {
+    blocks.push({ t: 'h2', text: 'Références' });
+    for (const r of input.refs) blocks.push({ t: 'p', text: r });
+  }
   blocks.push({ t: 'h2', text: 'Notes et décisions d’entraînement' });
   if (input.notes.trim()) blocks.push({ t: 'p', text: input.notes.trim() });
   blocks.push({ t: 'box', text: 'Décisions :', lines: 4 });

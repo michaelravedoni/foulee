@@ -13,6 +13,7 @@ import {
   type Trial,
   type TrainingSession,
   type DisciplineId,
+  type NormTable,
 } from '@foulee/core';
 import { IdbProvider, MemoryProvider, OpfsProvider, Vault, safeExt, type StorageProvider } from '@foulee/vault';
 import { probeVideo, canCreateProxy, createProxyInWorker } from '@foulee/media';
@@ -38,6 +39,7 @@ export const state = reactive({
   trials: new Map<string, Trial>(),
   analyses: new Map<string, Analysis>(),
   media: new Map<string, MediaInfo>(),
+  norms: [] as NormTable[],
   loadErrors: [] as { key: string; message: string }[],
   /** Travaux de fond (import, proxys) affichés dans la barre d'état. */
   jobs: new Map<string, { label: string; progress: number }>(),
@@ -153,7 +155,18 @@ function applySnapshot(snap: Awaited<ReturnType<Vault['loadAll']>>): void {
   state.trials = new Map(snap.trials.map((t) => [t.id, t]));
   state.analyses = new Map(snap.analyses.map((a) => [a.trialId, a]));
   state.media = new Map(snap.media.map((m) => [m.hash, m]));
+  state.norms = snap.norms;
   state.loadErrors = snap.errors;
+}
+
+export async function saveNorm(table: NormTable): Promise<void> {
+  await vault().saveNorm(table);
+  state.norms = [...state.norms.filter((n) => n.id !== table.id), table].sort((a, b) => a.title.localeCompare(b.title, 'fr'));
+}
+
+export async function removeNorm(id: string): Promise<void> {
+  await vault().removeNorm(id);
+  state.norms = state.norms.filter((n) => n.id !== id);
 }
 
 export async function requestPersistence(): Promise<boolean> {

@@ -470,3 +470,61 @@ test('suivi automatique d’un point et onglet Auto', async ({ page }) => {
   await page.getByRole('button', { name: 'Auto', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Détecter le corps et les appuis' })).toBeEnabled();
 });
+
+test('normes : import d’un tableau, vérification, comparaison et progression', async ({ page }) => {
+  const year = new Date().getFullYear();
+  const table = {
+    schema: 'norms@1',
+    id: 'fictif',
+    title: 'Tableau fictif (test)',
+    source: { name: 'Source de test', season: String(year) },
+    categories: [{ id: 'u16', label: 'U16', minAge: 14, maxAge: 15 }],
+    entries: [{ discipline: 'longueur', category: 'u16', sex: 'M', levels: [{ label: 'Bronze', value: 5.5 }, { label: 'Argent', value: 6.5 }] }],
+  };
+  await page.goto('./');
+  await page.getByRole('navigation').getByRole('link', { name: 'Athlètes' }).click();
+  await page.getByRole('button', { name: '＋ Ajouter' }).click();
+  await page.getByLabel('Prénom').fill('Noé');
+  await page.getByLabel('Nom', { exact: true }).fill('Norme');
+  await page.getByRole('button', { name: 'Créer' }).click();
+  await page.getByLabel('Date de naissance').fill(`${year - 15}-06-15`);
+  await page.getByTestId('athlete-sex').selectOption('M');
+
+  await page.getByRole('navigation').getByRole('link', { name: 'Normes' }).click();
+  await page.getByTestId('norm-file').setInputFiles({ name: 'mauvais.json', mimeType: 'application/json', buffer: Buffer.from('{"schema":"norms@2"}') });
+  await expect(page.getByRole('status')).toContainText('schema');
+  await page.getByTestId('norm-file').setInputFiles({ name: 'norme.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(table)) });
+  await expect(page.getByRole('heading', { name: 'Tableau fictif (test)' })).toBeVisible();
+  await expect(page.getByText('Valeurs non vérifiées à la source.')).toBeVisible();
+
+  await page.getByRole('navigation').getByRole('link', { name: 'Séances' }).click();
+  await page.getByRole('button', { name: '＋ Nouvelle séance' }).click();
+  await page.locator('input[type=file]').setInputFiles([VIDEO]);
+  await page.getByLabel('Athlète').selectOption({ label: 'Noé Norme' });
+  await page.getByLabel('Épreuve').selectOption('longueur');
+  await page.getByRole('button', { name: 'Importer', exact: true }).click();
+  await expect(page.getByText(/240 images · 120 i\/s/)).toBeVisible({ timeout: 20_000 });
+  await page.locator('.hud-tc').click();
+  await waitFrame(page, 0);
+  await page.getByRole('button', { name: 'Épreuve', exact: true }).click();
+  for (let i = 0; i < 20; i++) await page.keyboard.press('ArrowRight');
+  await waitFrame(page, 20);
+  await page.getByRole('button', { name: 'Appel droit' }).click();
+  for (let i = 0; i < 10; i++) await page.keyboard.press('ArrowRight');
+  await page.getByRole('button', { name: 'Décollage gauche', exact: true }).first().click();
+  for (let i = 0; i < 60; i++) await page.keyboard.press('ArrowRight');
+  await page.getByLabel('Position (m) : Réception').fill('6,2');
+  await page.getByRole('button', { name: 'Réception', exact: true }).click();
+  await expect(page.getByText('Longueur du saut')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Normes', exact: true }).click();
+  const box = page.getByTestId('norm-box');
+  await expect(box).toContainText('niveau atteint : Bronze');
+  await expect(box).toContainText('prochain : Argent');
+  await expect(box).toContainText('valeurs non vérifiées à la source');
+
+  // Progression sur la fiche de l'athlète
+  await page.getByRole('navigation').getByRole('link', { name: 'Athlètes' }).click();
+  await page.getByText('Noé Norme').first().click();
+  await expect(page.getByTestId('progress-longueur')).toContainText('Record 6,20 m');
+});

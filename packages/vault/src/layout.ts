@@ -12,11 +12,17 @@ export const DIRS = {
   trial: 'trials/',
   analysis: 'analyses/',
   media: 'media/',
+  /** Tableaux de normes importés par le coach (norms@1). */
+  norms: 'norms/',
   proxy: 'proxies/',
 } as const;
 
 export function entityKey(kind: EntityKind, id: string): string {
   return `${DIRS[kind]}${id}.json`;
+}
+
+export function normKey(id: string): string {
+  return `${DIRS.norms}${id}.json`;
 }
 
 export function mediaKey(hash: string, ext: string): string {

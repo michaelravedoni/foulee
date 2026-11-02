@@ -220,3 +220,14 @@ La licence du projet est provisoirement « tous droits réservés » (voir `LICE
 - Polices embarquées (`@fontsource-variable/inter`, `@fontsource/archivo-black`) : pas de CDN, fonctionne hors ligne. Plus d'émojis dans l'interface.
 - Calques sur la vidéo : squelette et étalon en `overlay-primary` (crème sur Void) ; les couleurs de dessin choisies par l'utilisateur restent libres.
 - Icônes de l'application redessinées (courbe crème sur fond noir). Pas porté : composants `Chip`, `PhaseTimeline`, `MetricRow` du système (les équivalents de l'application, boutons à bascule, onglets, tableaux, en reprennent les jetons).
+
+## Phase 9 — Normes et tendances
+
+**Aucune valeur de norme n'est embarquée.** Les tableaux officiels (Swiss Athletics ou autre) ne sont pas récupérables ici de façon fiable : le coach importe un fichier JSON `norms@1` qu'il a contrôlé à la source. L'exigence « les normes affichées correspondent à la source officielle » est donc tenue par la **provenance** : chaque tableau porte `source` (nom, URL, saison, date de relevé) et, une fois contrôlé, `verified` (nom, date). Tant que `verified` manque, chaque affichage (onglet Normes, rapport coach) dit « valeurs non vérifiées à la source ».
+
+- `core/norms.ts` : `parseNormTable` (validation, messages en français), `categoryFor` (catégorie = âge atteint dans l'année de la saison, année de naissance → année de la séance), `rateAgainst` (temps : plus petit = meilleur ; sinon plus grand ; niveau atteint, prochain niveau et écart, drapeau « trop proche du seuil » si le seuil est dans résultat ± marge).
+- `core/trends.ts` : `summarize` (record, meilleur de la saison, moyenne des 3 derniers, pente par mois). Sens « mieux/moins » seulement si le changement estimé dépasse 2× la marge moyenne ; sinon « stable » ; moins de 3 résultats → « insuffisant ».
+- Coffre : fichiers `norms/<id>.json` (copiés par la sauvegarde, inclus dans l'export ZIP et fusionnés à l'import : un tableau déjà présent n'est pas écrasé). `Athlete.sex?` ('F'|'M') optionnel, requis pour comparer.
+- Application : écran `/normes` (import, modèle téléchargeable, « J'ai vérifié à la source », suppression), onglet **Normes** de l'essai, bloc **Progression** par épreuve sur la fiche athlète, lignes « Références » dans les rapports.
+- Résultat d'un essai (`app/lib/results.ts`) : temps total (sprint), longueur (sauts horizontaux), distance saisie (lancers). Hauteur de barre (saut en hauteur, perche) : pas encore de résultat principal, donc pas de comparaison.
+- Test de plausibilité du modèle Vmax/τ sur des temps intermédiaires de référence (recopiés de mémoire, à contrôler) : ordres de grandeur seulement.

@@ -111,6 +111,34 @@ describe('coffre v1', () => {
   });
 });
 
+describe('tableaux de normes', () => {
+  const table = {
+    schema: 'norms@1' as const,
+    id: 'essai',
+    title: 'Tableau fictif',
+    source: { name: 'Test', season: '2099' },
+    categories: [{ id: 'u16', label: 'U16', minAge: 14, maxAge: 15 }],
+    entries: [{ discipline: '100m', category: 'u16', sex: 'M' as const, levels: [{ label: 'A', value: 12 }] }],
+  };
+  it('enregistre, relit, exporte, importe et supprime', async () => {
+    const src = await filledVault();
+    await src.vault.saveNorm(table);
+    expect(await src.vault.listNorms()).toEqual([table]);
+    const zip = await exportArchive(src.vault, { includeMedia: false });
+    const dst = new Vault(new MemoryProvider());
+    await dst.open();
+    const report = await importArchive(dst, zip!);
+    expect(report.errors).toEqual([]);
+    expect(await dst.listNorms()).toEqual([table]);
+    await dst.removeNorm('essai');
+    expect(await dst.listNorms()).toEqual([]);
+  });
+  it('refuse un tableau invalide', async () => {
+    const src = await filledVault();
+    await expect(src.vault.saveNorm({ ...table, entries: [] })).rejects.toThrow(/entries/);
+  });
+});
+
 describe('export et import du coffre', () => {
   it('fait un aller-retour complet, vidéos comprises, sans les proxys', async () => {
     const src = await filledVault();

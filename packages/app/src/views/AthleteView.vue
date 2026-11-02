@@ -6,6 +6,7 @@ import { moveToTrash, saveAthlete, state, trialsOfAthlete } from '../store/data'
 import { age } from '../lib/format';
 import TagEditor from '../components/TagEditor.vue';
 import TrialList from '../components/TrialList.vue';
+import ProgressChart from '../components/ProgressChart.vue';
 
 const props = defineProps<{ id: string }>();
 const router = useRouter();
@@ -53,10 +54,19 @@ function toggle(id: string) {
         <label class="field">Prénom <input v-model="draft.firstName" @input="save" /></label>
         <label class="field">Nom <input v-model="draft.lastName" @input="save" /></label>
         <label class="field">Date de naissance <input v-model="draft.birthDate" type="date" @change="save" /></label>
+        <label class="field">
+          Sexe (pour les normes)
+          <select v-model="draft.sex" data-testid="athlete-sex" @change="save">
+            <option :value="undefined">—</option>
+            <option value="F">Femme</option>
+            <option value="M">Homme</option>
+          </select>
+        </label>
       </div>
       <TagEditor v-model="draft.tags" @update:model-value="save" />
       <label class="field">Notes <textarea v-model="draft.notes" @input="save"></textarea></label>
     </div>
+    <ProgressChart v-for="d in usedDisciplines" :key="d.id" :athlete-id="id" :discipline="d.id" :label="d.label" />
     <div class="spread">
       <h2>Essais</h2>
       <div class="row">

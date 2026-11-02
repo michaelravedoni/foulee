@@ -8,10 +8,13 @@ import {
   type MediaInfo,
   type Trial,
   type TrainingSession,
+  type NormTable,
+  parseNormTable,
 } from '@foulee/core';
 import { sha256Blob } from './hash.js';
 import {
   DIRS,
+  normKey,
   MANIFEST_KEY,
   VAULT_FORMAT,
   VAULT_FORMAT_VERSION,
@@ -29,6 +32,7 @@ export interface VaultSnapshot {
   trials: Trial[];
   analyses: Analysis[];
   media: MediaInfo[];
+  norms: NormTable[];
   /** Fichiers illisibles ou invalides : signalés, jamais supprimés. */
   errors: { key: string; message: string }[];
 }
@@ -85,7 +89,7 @@ export class Vault {
   }
 
   async loadAll(): Promise<VaultSnapshot> {
-    const snap: VaultSnapshot = { athletes: [], sessions: [], trials: [], analyses: [], media: [], errors: [] };
+    const snap: VaultSnapshot = { athletes: [], sessions: [], trials: [], analyses: [], media: [], norms: [], errors: [] };
     const lists: [EntityKind, unknown[]][] = [
       ['athlete', snap.athletes],
       ['session', snap.sessions],
@@ -107,6 +111,7 @@ export class Vault {
         }),
       );
     }
+    snap.norms = await this.listNorms();
     return snap;
   }
 
@@ -124,6 +129,29 @@ export class Vault {
   /** Suppression définitive (la corbeille est gérée par `deletedAt`). */
   async remove(kind: EntityKind, id: string): Promise<void> {
     await this.provider.delete(entityKey(kind, id));
+  }
+
+  /** Tableaux de normes importés (fichiers invalides ignorés, jamais supprimés). */
+  async listNorms(): Promise<NormTable[]> {
+    const out: NormTable[] = [];
+    for (const key of (await this.provider.list(DIRS.norms)).filter((k) => k.endsWith('.json'))) {
+      try {
+        const blob = await this.provider.read(key);
+        if (blob) out.push(parseNormTable(JSON.parse(await blob.text())));
+      } catch {
+        // illisible : ignoré
+      }
+    }
+    return out.sort((a, b) => a.title.localeCompare(b.title, 'fr'));
+  }
+
+  async saveNorm(table: NormTable): Promise<void> {
+    parseNormTable(table);
+    await this.writeJson(normKey(table.id), table);
+  }
+
+  removeNorm(id: string): Promise<void> {
+    return this.provider.delete(normKey(id));
   }
 
   /**
