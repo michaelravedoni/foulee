@@ -1,14 +1,13 @@
 <script setup lang="ts">
-import { computed, reactive } from 'vue';
+import { computed } from 'vue';
+import EventTemplate from './EventTemplate.vue';
 import {
   analyzeJump,
-  eventLabel,
   formatMeasure,
   frNumber,
   jumpSpecFor,
   type Analysis,
   type FrameTimeline,
-  type MarkedEvent,
 } from '@foulee/core';
 
 const props = defineProps<{
@@ -27,31 +26,10 @@ const emit = defineEmits<{
 const spec = computed(() => jumpSpecFor(props.discipline));
 const result = computed(() => (spec.value && props.timeline ? analyzeJump(spec.value, props.analysis.events, props.timeline, props.timeScale, props.fps) : null));
 
-// Position saisie par rangée du gabarit (l'appel est sur la planche : 0 m par défaut).
-const pos = reactive<Record<string, string>>({});
-const keyOf = (i: number) => `r${i}`;
-function posText(i: number, type: string): string {
-  return pos[keyOf(i)] ?? (type === 'appel' ? '0' : '');
-}
-function parsePos(i: number, type: string): number | undefined {
-  const raw = posText(i, type).trim().replace(',', '.');
-  if (!raw) return undefined;
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : undefined;
-}
-function put(i: number, type: string, side?: 'G' | 'D') {
-  emit('mark', type, side, spec.value?.events[i]?.position ? parsePos(i, type) : undefined);
-}
-function count(type: string): number {
-  return props.analysis.events.filter((e) => e.type === type).length;
-}
-
 const fmt = (m: { value: number; margin: number }, unit: string, minDigits = 0) => formatMeasure(m, unit, frNumber, minDigits);
 const secs = (m: { value: number; margin: number }) => `${frNumber(m.value, 3)} ± ${frNumber(m.margin, 3)} s`;
-const label = (e: MarkedEvent) => eventLabel(e.type, e.side);
 const metricText = (m: { value: { value: number; margin: number }; digits: number; unit: string }) =>
   `${frNumber(m.value.value, m.digits)} ± ${frNumber(m.value.margin, m.digits + 1)} ${m.unit}`;
-const posLabel = (kind: 'distance' | 'hauteur' | undefined) => (kind === 'hauteur' ? 'Hauteur (m)' : 'Position (m)');
 </script>
 
 <template>
@@ -61,48 +39,7 @@ const posLabel = (kind: 'distance' | 'hauteur' | undefined) => (kind === 'hauteu
       planche ou le point de repère ; avant la planche, saisis une valeur négative. Elles servent à la longueur, aux phases et à la vitesse d’élan.
     </p>
 
-    <section class="stack">
-      <h3>Gabarit du {{ spec.label.toLowerCase() }}</h3>
-      <ul class="plain">
-        <li v-for="(d, i) in spec.events" :key="i" class="def stack">
-          <div class="row">
-            <strong class="grow">{{ d.label }}<span v-if="!d.required" class="muted small"> (facultatif)</span></strong>
-            <span class="muted small mono">{{ count(d.type) }} posé{{ count(d.type) > 1 ? 's' : '' }}</span>
-          </div>
-          <p class="small muted">{{ d.hint }}</p>
-          <div class="row">
-            <template v-if="d.sided">
-              <button class="btn secondary small" :aria-label="`${d.label} gauche`" @click="put(i, d.type, 'G')">{{ d.label.split(' (')[0] }} G</button>
-              <button class="btn secondary small" :aria-label="`${d.label} droit`" @click="put(i, d.type, 'D')">{{ d.label.split(' (')[0] }} D</button>
-            </template>
-            <button v-else class="btn secondary small" :aria-label="d.label" @click="put(i, d.type)">Marquer</button>
-            <label v-if="d.position" class="small muted">{{ posLabel(d.position) }}
-              <input
-                class="pos"
-                inputmode="decimal"
-                :value="posText(i, d.type)"
-                :aria-label="`${posLabel(d.position)} : ${d.label}`"
-                @input="pos[keyOf(i)] = ($event.target as HTMLInputElement).value"
-              />
-            </label>
-          </div>
-        </li>
-      </ul>
-    </section>
-
-    <section class="stack">
-      <h3>Repères posés</h3>
-      <p v-if="!analysis.events.length" class="small muted">Aucun repère.</p>
-      <ul v-else class="plain small">
-        <li v-for="e in analysis.events" :key="e.id" class="row">
-          <button class="linklike grow" @click="emit('seek', e.frame)">
-            {{ label(e) }}<template v-if="e.position !== undefined"> · {{ frNumber(e.position, 2) }} m</template>
-            <span class="muted mono"> img {{ e.frame }}</span>
-          </button>
-          <button class="btn ghost small icon" :aria-label="`Supprimer ${label(e)} image ${e.frame}`" @click="emit('remove', e.id)">✕</button>
-        </li>
-      </ul>
-    </section>
+    <EventTemplate :title="`Gabarit du ${spec.label.toLowerCase()}`" :defs="spec.events" :events="analysis.events" @mark="(t, sd, p) => emit('mark', t, sd, p)" @seek="(f) => emit('seek', f)" @remove="(id) => emit('remove', id)" />
 
     <template v-if="result">
       <p v-if="result.missing.length" class="small" role="status">À poser : {{ result.missing.join(', ') }}.</p>
@@ -160,10 +97,6 @@ const posLabel = (kind: 'distance' | 'hauteur' | undefined) => (kind === 'hauteu
 </template>
 
 <style scoped>
-.def {
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border, transparent);
-}
 .tbl {
   width: 100%;
   border-collapse: collapse;
@@ -207,10 +140,6 @@ const posLabel = (kind: 'distance' | 'hauteur' | undefined) => (kind === 'hauteu
   border: 1px solid var(--border, currentColor);
   border-radius: 6px;
   padding: 0 6px;
-  margin-left: 6px;
-}
-.pos {
-  width: 4.5em;
   margin-left: 6px;
 }
 </style>

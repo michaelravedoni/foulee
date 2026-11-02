@@ -18,3 +18,5 @@ export * from './kinogram.js';
 export * from './virtual.js';
 export * from './jumpspec.js';
 export * from './jumps.js';
+export * from './throwspec.js';
+export * from './throws.js';
