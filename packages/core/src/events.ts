@@ -12,6 +12,10 @@ export const BASIC_EVENT_TYPES = [
   { id: 'appel', label: 'Appel', key: 'c', sided: true },
   { id: 'lacher', label: 'Lâcher', key: 'l', sided: false },
   { id: 'arrivee', label: 'Arrivée', key: 'r', sided: false },
+  { id: 'reception', label: 'Réception', key: 'x', sided: false },
+  { id: 'sommet', label: 'Sommet', key: 's', sided: false },
+  { id: 'planter', label: 'Pose de la perche', key: 'f', sided: false },
+  { id: 'barre', label: 'Passage de la barre', key: 'b', sided: false },
   { id: 'repere', label: 'Repère libre', key: 'm', sided: false },
 ] as const;
 

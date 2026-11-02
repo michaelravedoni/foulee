@@ -76,7 +76,7 @@ export interface SprintAnalysis {
 /** Marge sur la position d'un appui lue à l'écran, en mètres (pointage). */
 export const FOOT_POSITION_MARGIN_M = 0.05;
 
-function timeMargin(tl: TimeSource, a: number, b: number, scale: number): number {
+export function timeMargin(tl: TimeSource, a: number, b: number, scale: number): number {
   return ((tl.durationOf(a) + tl.durationOf(b)) / 2) * scale;
 }
 
@@ -217,8 +217,8 @@ function fitProfile(splits: SplitRow[]): SprintProfile | undefined {
 
 // ——— Foulées ———
 
-function analyzeStrides(
-  spec: TrialSpec,
+export function analyzeStrides(
+  spec: Pick<TrialSpec, 'plausible' | 'contactMinFps'>,
   events: readonly MarkedEvent[],
   tl: TimeSource,
   scale: number,

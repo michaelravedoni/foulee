@@ -5,3 +5,5 @@ export * from './build.js';
 export * from './csv.js';
 export * from './pdf.js';
 export { pdfText } from './text.js';
+export * from './jumpreport.js';
+export * from './jumpcsv.js';

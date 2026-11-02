@@ -362,3 +362,46 @@ test('sauvegarde chiffrée sur WebDAV, puis restauration sur un nouvel appareil'
   await expect(b.getByText('Léa Secret')).toBeVisible();
   await ctx2.close();
 });
+
+test('saut en longueur : gabarit, mesures et rapport', async ({ page }) => {
+  await page.goto('./');
+  await page.getByRole('navigation').getByRole('link', { name: 'Athlètes' }).click();
+  await page.getByRole('button', { name: '＋ Ajouter' }).click();
+  await page.getByLabel('Prénom').fill('Max');
+  await page.getByLabel('Nom', { exact: true }).fill('Saut');
+  await page.getByRole('button', { name: 'Créer' }).click();
+  await page.getByRole('navigation').getByRole('link', { name: 'Séances' }).click();
+  await page.getByRole('button', { name: '＋ Nouvelle séance' }).click();
+  await page.locator('input[type=file]').setInputFiles([VIDEO]);
+  await page.getByLabel('Athlète').selectOption({ label: 'Max Saut' });
+  await page.getByLabel('Épreuve').selectOption('longueur');
+  await page.getByRole('button', { name: 'Importer', exact: true }).click();
+  await expect(page.getByText(/240 images · 120 i\/s/)).toBeVisible({ timeout: 20_000 });
+  await page.locator('.hud-tc').click();
+  await waitFrame(page, 0);
+
+  await page.getByRole('button', { name: 'Épreuve', exact: true }).click();
+  await expect(page.getByRole('heading', { name: /Gabarit du longueur/i })).toBeVisible();
+
+  // Appel (planche, 0 m), décollage, réception à 6,20 m
+  for (let i = 0; i < 20; i++) await page.keyboard.press('ArrowRight');
+  await waitFrame(page, 20);
+  await page.getByRole('button', { name: 'Appel droit' }).click();
+  for (let i = 0; i < 10; i++) await page.keyboard.press('ArrowRight');
+  await page.getByRole('button', { name: 'Décollage gauche', exact: true }).first().click();
+  for (let i = 0; i < 60; i++) await page.keyboard.press('ArrowRight');
+  await page.getByLabel('Position (m) : Réception').fill('6,2');
+  await page.getByRole('button', { name: 'Réception', exact: true }).click();
+
+  await expect(page.getByText('Longueur du saut')).toBeVisible();
+  await expect(page.locator('.jump table.tbl').first()).toContainText('6,20');
+  await expect(page.locator('.jump table.tbl').first()).toContainText('indicatif');
+
+  await page.getByRole('button', { name: 'Rapports', exact: true }).click();
+  for (const [button, suffix] of [['PDF athlète', 'athlete.pdf'], ['PDF coach', 'coach.pdf']] as const) {
+    const [download] = await Promise.all([page.waitForEvent('download', { timeout: 30_000 }), page.getByRole('button', { name: button }).click()]);
+    expect(download.suggestedFilename()).toContain(suffix);
+    const head = (await import('node:fs')).readFileSync((await download.path())!).subarray(0, 5).toString('latin1');
+    expect(head).toBe('%PDF-');
+  }
+});

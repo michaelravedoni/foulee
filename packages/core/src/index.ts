@@ -16,3 +16,5 @@ export * from './sprint.js';
 export * from './audio.js';
 export * from './kinogram.js';
 export * from './virtual.js';
+export * from './jumpspec.js';
+export * from './jumps.js';
