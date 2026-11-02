@@ -8,7 +8,15 @@ import {
   derivedTags,
   disciplineLabel,
   eventLabel,
+  formatMeasure,
   formatTimecode,
+  frNumber,
+  calibrationRelError,
+  pixelsPerMeter,
+  sectionSpeed,
+  sectionsBetween,
+  trajectoryLength,
+  trajectorySpeeds,
   newId,
   realTimeScale,
   type Analysis,
@@ -35,7 +43,7 @@ const analysis = ref<Analysis>(analysisOf(props.id));
 const player = ref<InstanceType<typeof FramePlayer>>();
 const timeline = shallowRef<FrameTimeline | null>(null);
 const currentFrame = ref(0);
-const tab = ref<'reperes' | 'infos'>('reperes');
+const tab = ref<'reperes' | 'mesures' | 'infos'>('reperes');
 
 watch(
   () => props.id,
@@ -111,6 +119,63 @@ function deltaMs(a: MarkedEvent, b: MarkedEvent): string {
   return `+${ms.toFixed(0)} ms`;
 }
 
+// ——— Mesures (phase 2) ———
+const timeScale = computed(() => realTimeScale(fps.value, trial.value?.captureFps));
+const cal = computed(() => analysis.value.calibration);
+
+function setPosition(id: string, raw: string) {
+  const n = raw.trim() === '' ? undefined : Number(raw.replace(',', '.'));
+  const events = analysis.value.events.map((e) => {
+    if (e.id !== id) return e;
+    const { position: _drop, ...rest } = e;
+    return n !== undefined && Number.isFinite(n) ? { ...rest, position: n } : rest;
+  });
+  onAnalysis({ ...analysis.value, events });
+}
+
+const sections = computed(() => {
+  const tl = timeline.value;
+  if (!tl) return [];
+  return sectionsBetween(analysis.value.events, tl, timeScale.value).map((s) => {
+    const meters = s.from.position !== undefined && s.to.position !== undefined ? s.to.position - s.from.position : undefined;
+    return {
+      ...s,
+      meters,
+      speed: meters !== undefined && meters > 0 ? sectionSpeed(meters, s.seconds, s.margin) : undefined,
+      text: `${frNumber(s.seconds, 3)} ± ${frNumber(s.margin, 3)} s`,
+    };
+  });
+});
+const totalSection = computed(() => {
+  const list = sections.value;
+  if (list.length < 2) return null;
+  const sec = list.reduce((a, s) => a + s.seconds, 0);
+  // Du premier au dernier repère : la marge est celle des deux extrémités seulement.
+  const first = list[0]!;
+  const last = list[list.length - 1]!;
+  const tl = timeline.value!;
+  const margin = ((tl.durationOf(first.from.frame) + tl.durationOf(last.to.frame)) / 2) * timeScale.value;
+  return { text: `${frNumber(sec, 3)} ± ${frNumber(margin, 3)} s` };
+});
+
+const trackStats = computed(() => {
+  const tl = timeline.value;
+  return (analysis.value.trajectories ?? []).map((t) => {
+    const c = cal.value;
+    const speeds = tl && c ? trajectorySpeeds(t.points, c, tl, timeScale.value) : [];
+    const peak = speeds.reduce<(typeof speeds)[number] | null>((m, s) => (!m || s.speed.value > m.speed.value ? s : m), null);
+    return {
+      t,
+      length: c ? formatMeasure(trajectoryLength(t.points, c), 'm', frNumber) : '—',
+      peak: peak ? formatMeasure(peak.speed, 'm/s', frNumber) : '—',
+      peakFrame: peak?.frame,
+    };
+  });
+});
+function removeTrack(id: string) {
+  onAnalysis({ ...analysis.value, trajectories: (analysis.value.trajectories ?? []).filter((t) => t.id !== id) });
+}
+
 function onKey(e: KeyboardEvent) {
   if (isTypingTarget(e.target)) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -175,6 +240,7 @@ async function trash() {
       <aside class="side card">
         <div class="tabs">
           <button :class="{ active: tab === 'reperes' }" @click="tab = 'reperes'">Repères</button>
+          <button :class="{ active: tab === 'mesures' }" @click="tab = 'mesures'">Mesures</button>
           <button :class="{ active: tab === 'infos' }" @click="tab = 'infos'">Essai</button>
         </div>
         <div v-if="tab === 'reperes'" class="stack">
@@ -187,7 +253,7 @@ async function trash() {
               <button v-else class="btn secondary small" :title="`${t.label} (touche ${t.key})`" @click="mark(t.id)">{{ t.label }}</button>
             </template>
           </div>
-          <p class="small muted">Marque l’image affichée. Les mesures calculées à partir des repères arrivent en phase 2 et 3.</p>
+          <p class="small muted">Marque l’image affichée. Les temps de section sont dans l’onglet Mesures.</p>
           <ol v-if="analysis.events.length" class="list events">
             <li v-for="(ev, i) in analysis.events" :key="ev.id" class="list-item">
               <button class="linklike grow" @click="player?.seek(ev.frame)">
@@ -199,6 +265,64 @@ async function trash() {
             </li>
           </ol>
           <p v-else class="muted small">Aucun repère.</p>
+        </div>
+        <div v-else-if="tab === 'mesures'" class="stack measures">
+          <p class="small muted">
+            Mesures <strong>indicatives</strong> : valables dans le plan de l’étalon, caméra fixe et à peu près perpendiculaire à la piste.
+            Les marges tiennent compte du pointage et de la durée d’une image.
+          </p>
+          <section class="stack">
+            <h3>Étalon</h3>
+            <p v-if="cal" class="small">
+              {{ frNumber(cal.meters, 2) }} m = {{ frNumber(pixelsPerMeter(cal), 1) }} px/m, incertitude ±{{ frNumber(calibrationRelError(cal) * 100, 1) }} %.
+              <button class="linklike" @click="onAnalysis({ ...analysis, calibration: undefined })">Retirer</button>
+            </p>
+            <p v-else class="small muted">Outil « règle » du lecteur : trace un segment de longueur connue (deux plots, une ligne de piste) sur une image.</p>
+          </section>
+          <section class="stack">
+            <h3>Chrono par sections</h3>
+            <p v-if="analysis.events.length < 2" class="small muted">Marque au moins deux repères (onglet Repères) pour obtenir des temps de section.</p>
+            <template v-else>
+              <div v-for="ev in analysis.events" :key="ev.id" class="row small">
+                <span class="grow">{{ eventLabel(ev.type, ev.side) }} <span class="muted mono">img {{ ev.frame }}</span></span>
+                <label class="muted">position
+                  <input
+                    class="pos"
+                    type="text"
+                    inputmode="decimal"
+                    placeholder="m"
+                    :value="ev.position ?? ''"
+                    :aria-label="`Position de ${eventLabel(ev.type, ev.side)} en mètres`"
+                    @change="setPosition(ev.id, ($event.target as HTMLInputElement).value)"
+                  />
+                </label>
+              </div>
+              <table class="sections small">
+                <thead><tr><th>Section</th><th>Temps</th><th>Vitesse</th></tr></thead>
+                <tbody>
+                  <tr v-for="s in sections" :key="s.from.id + s.to.id">
+                    <td>{{ eventLabel(s.from.type, s.from.side) }} → {{ eventLabel(s.to.type, s.to.side) }}<template v-if="s.meters !== undefined"> · {{ frNumber(s.meters, 1) }} m</template></td>
+                    <td class="mono">{{ s.text }}</td>
+                    <td class="mono">{{ s.speed ? formatMeasure(s.speed, 'm/s', frNumber) : '—' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p v-if="totalSection" class="small">Total : <span class="mono">{{ totalSection.text }}</span></p>
+              <p class="small muted">La marge est d’au plus une image par section. Indique la position de chaque repère (m depuis le départ) pour obtenir les vitesses.</p>
+            </template>
+          </section>
+          <section class="stack">
+            <h3>Trajectoires</h3>
+            <p v-if="!trackStats.length" class="small muted">Outil « cible » du lecteur : un clic par image pour suivre un point (hanche, pied, engin).</p>
+            <div v-for="r in trackStats" :key="r.t.id" class="row small">
+              <span class="grow">
+                <strong :style="{ color: r.t.color }">{{ r.t.label }}</strong> · {{ r.t.points.length }} points · longueur {{ r.length }}
+                <template v-if="cal"> · pic {{ r.peak }}</template>
+                <span v-else class="muted"> · pose un étalon pour les vitesses</span>
+              </span>
+              <button class="btn ghost small icon" :aria-label="`Supprimer ${r.t.label}`" @click="removeTrack(r.t.id)">✕</button>
+            </div>
+          </section>
         </div>
         <div v-else class="stack">
           <label class="field">
@@ -246,6 +370,24 @@ async function trash() {
 </template>
 
 <style scoped>
+.pos {
+  width: 4.5em;
+  margin-left: 6px;
+}
+.sections {
+  width: 100%;
+  border-collapse: collapse;
+}
+.sections th {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 500;
+}
+.sections td,
+.sections th {
+  padding: 4px 6px 4px 0;
+  vertical-align: top;
+}
 .layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;

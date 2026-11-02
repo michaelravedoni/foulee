@@ -77,6 +77,14 @@ export function validateAnalysis(v: unknown, path = 'analyse'): Analysis {
   num(o, 'timeOrigin', path);
   if (!Array.isArray(o.events)) throw new ValidationError('« events » doit être une liste', path);
   if (!Array.isArray(o.annotations)) throw new ValidationError('« annotations » doit être une liste', path);
+  if (o.calibration !== undefined) {
+    const c = obj(o.calibration, `${path}.calibration`);
+    num(c, 'meters', `${path}.calibration`);
+    num(c, 'clickErrorPx', `${path}.calibration`);
+    obj(c.a, `${path}.calibration.a`);
+    obj(c.b, `${path}.calibration.b`);
+  }
+  if (o.trajectories !== undefined && !Array.isArray(o.trajectories)) throw new ValidationError('« trajectories » doit être une liste', path);
   return o as unknown as Analysis;
 }
 

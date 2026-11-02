@@ -23,9 +23,11 @@ const PATHS: Record<string, string> = {
   text: 'M5 6V4h14v2h-6v14h-2V6z',
   erase: 'M16.200 3.500L21 8.300a1.500 1.500 0 0 1 0 2.100L11 20.500H5.500L3.500 18.500a1.500 1.500 0 0 1 0-2.100L14.100 3.500a1.500 1.500 0 0 1 2.100 0zM9 20.500h12',
   lock: 'M7 10V8a5 5 0 0 1 10 0v2h1v11H6V10zm2 0h6V8a3 3 0 0 0-6 0z',
+  ruler: 'M3 17L17 3l4 4L7 21zM7 13l2 2M10 10l2 2M13 7l2 2',
+  target: 'M12 3v4M12 17v4M3 12h4M17 12h4M12 9a3 3 0 1 0 0.001 0z',
   unlock: 'M7 10V8a5 5 0 0 1 9.500-2.200l-1.800.9A3 3 0 0 0 9 8v2h9v11H6V10z',
 };
-const STROKE = new Set(['line', 'arrow', 'pen', 'circle', 'rect', 'angle', 'erase']);
+const STROKE = new Set(['line', 'arrow', 'pen', 'circle', 'rect', 'angle', 'erase', 'ruler', 'target']);
 defineProps<{ name: string; size?: number }>();
 </script>
 

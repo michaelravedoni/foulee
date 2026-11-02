@@ -102,6 +102,16 @@ sont pas stockés dans `tags[]` (qui ne contient que les tags libres et rapides)
 - `holdFrames` : nombre d’images pendant lesquelles le dessin reste visible après `frame` ; `null` = toujours visible.
 - `source` : `manuel` ou `auto` ; `confidence` entre 0 et 1 (1 pour un repère manuel).
 
+Champs facultatifs ajoutés en phase 2 (le format reste `analysis@1` : un lecteur plus ancien les ignore) :
+
+- `events[].position` : position du repère le long de la piste, en mètres depuis le départ (saisie manuelle).
+- `calibration` : étalon `{ "a": {x,y}, "b": {x,y}, "meters": 10, "clickErrorPx": 2 }`. `a` et `b` sont en pixels de
+  l’image, `meters` est la longueur réelle du segment. Sans étalon, aucune mesure n’est donnée en mètres.
+- `trajectories[]` : `{ "id": "trj_…", "label", "color", "points": [{ "frame", "x", "y" }] }`, un point par image pointée.
+
+Les mesures en mètres valent **dans le plan de l’étalon** (caméra fixe, à peu près perpendiculaire à la piste). Les marges
+d’erreur ne sont pas stockées : elles sont recalculées à l’affichage (pointage ±`clickErrorPx`, durée d’une image).
+
 **Média** (`media@1`, `media/<sha256>.json`) : `hash`, `mime`, `ext`, `size`, `originalName`, `importedAt`, `width`,
 `height`, `rotation`, `durationS`, `codec?`, `frameCount`, `nominalFps`, `variableFrameRate`, `proxyHash?`.
 

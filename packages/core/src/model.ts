@@ -112,6 +112,8 @@ export interface MarkedEvent {
   source: EventSource;
   confidence: number;
   label?: string;
+  /** Position le long de la piste, en mètres depuis le départ (saisie par l'utilisateur). */
+  position?: number;
 }
 
 export type ShapeKind = 'ligne' | 'fleche' | 'main' | 'cercle' | 'rectangle' | 'texte' | 'angle';
@@ -135,6 +137,31 @@ export interface Annotation {
   holdFrames: number | null;
 }
 
+/** Étalon : segment de longueur connue dans le plan de course (pixels de l'image). */
+export interface Calibration {
+  a: Point;
+  b: Point;
+  /** Longueur réelle du segment, en mètres. */
+  meters: number;
+  /** Incertitude de pointage supposée, en pixels. */
+  clickErrorPx: number;
+}
+
+/** Position d'un point suivi à une image donnée. */
+export interface TrackPoint {
+  frame: number;
+  x: number;
+  y: number;
+}
+
+/** Trajectoire pointée à la main, image par image. */
+export interface Trajectory {
+  id: string;
+  label: string;
+  color: string;
+  points: TrackPoint[];
+}
+
 export interface Analysis {
   schema: typeof SCHEMA.analysis;
   trialId: string;
@@ -143,6 +170,10 @@ export interface Analysis {
   timeOrigin: number;
   events: MarkedEvent[];
   annotations: Annotation[];
+  /** Étalon pour les mesures en mètres (phase 2). Absent = mesures en pixels uniquement. */
+  calibration?: Calibration;
+  /** Trajectoires pointées (phase 2). */
+  trajectories?: Trajectory[];
   /** Calque de dessin verrouillé. */
   locked: boolean;
 }

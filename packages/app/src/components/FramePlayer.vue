@@ -4,6 +4,10 @@ import {
   RATES,
   UndoStack,
   angleAt,
+  createCalibration,
+  formatMeasure,
+  measureAngle,
+  measureLength,
   arrowHead,
   eventLabel,
   formatTimecode,
@@ -17,6 +21,7 @@ import {
   stepRate,
   type Analysis,
   type Annotation,
+  type Trajectory,
   type FrameTimeline,
   type MediaInfo,
   type Point,
@@ -57,7 +62,7 @@ const emit = defineEmits<{
   ready: [FrameTimeline];
 }>();
 
-type Tool = 'deplacer' | ShapeKind | 'gomme';
+type Tool = 'deplacer' | ShapeKind | 'gomme' | 'etalon' | 'trajectoire';
 const TOOLS: { id: Tool; label: string; icon: string }[] = [
   { id: 'deplacer', label: 'Déplacer, zoomer, parcourir', icon: 'hand' },
   { id: 'ligne', label: 'Ligne', icon: 'line' },
@@ -67,6 +72,8 @@ const TOOLS: { id: Tool; label: string; icon: string }[] = [
   { id: 'rectangle', label: 'Rectangle', icon: 'rect' },
   { id: 'angle', label: 'Angle (3 points)', icon: 'angle' },
   { id: 'texte', label: 'Texte', icon: 'text' },
+  { id: 'etalon', label: 'Étalon : segment de longueur connue', icon: 'ruler' },
+  { id: 'trajectoire', label: 'Trajectoire : un point par image', icon: 'target' },
   { id: 'gomme', label: 'Gomme', icon: 'erase' },
 ];
 const COLORS = ['#ff3b30', '#ffcc00', '#34c759', '#0a84ff', '#ffffff', '#000000'];
@@ -449,6 +456,14 @@ function onPointerDown(e: PointerEvent) {
     if (text?.trim()) commitAnnotations([...props.analysis.annotations, makeAnnotation('texte', [p], text.trim())]);
     return;
   }
+  if (t === 'etalon') {
+    etalonDraft.value = { a: p, b: p };
+    return;
+  }
+  if (t === 'trajectoire') {
+    addTrackPoint(p);
+    return;
+  }
   if (t === 'angle' && angleStage === 1 && draft.value) {
     draft.value = { ...draft.value, points: [draft.value.points[0]!, draft.value.points[1]!, p] };
     return;
@@ -481,6 +496,10 @@ function onPointerMove(e: PointerEvent) {
       const target = timeline.value?.clamp(scrubStart.frame + delta) ?? 0;
       if (target !== frame.value) void showFrame(target);
     }
+    return;
+  }
+  if (etalonDraft.value) {
+    etalonDraft.value = { a: etalonDraft.value.a, b: videoPoint(e) };
     return;
   }
   const d = draft.value;
@@ -516,6 +535,12 @@ function onPointerUp(e: PointerEvent) {
     return;
   }
 
+  if (etalonDraft.value) {
+    const { a, b } = etalonDraft.value;
+    etalonDraft.value = null;
+    finishEtalon(a, b);
+    return;
+  }
   const d = draft.value;
   if (!d) return;
   const [p0, p1] = d.points as [Point, Point];
@@ -538,6 +563,67 @@ function onPointerUp(e: PointerEvent) {
   if (tiny && d.kind !== 'main') return;
   const final = d.kind === 'main' ? { ...d, points: simplifyPath(d.points, W.value * 0.0015) } : d;
   commitAnnotations([...props.analysis.annotations, final]);
+}
+
+// ——— Mesures : étalon, longueurs, trajectoires ———
+
+const etalonDraft = ref<{ a: Point; b: Point } | null>(null);
+const calibration = computed(() => props.analysis.calibration);
+const trajectories = computed(() => props.analysis.trajectories ?? []);
+const activeTrack = ref<string | null>(null);
+
+function finishEtalon(a: Point, b: Point) {
+  if (Math.hypot(b.x - a.x, b.y - a.y) < W.value * 0.01) return;
+  const raw = window.prompt('Longueur réelle de ce segment, en mètres (ex. 10 pour deux plots à 10 m)');
+  const meters = Number(raw?.replace(',', '.'));
+  const cal = createCalibration(a, b, meters);
+  if (!cal) return;
+  update({ calibration: cal });
+  tool.value = 'deplacer';
+}
+function removeCalibration() {
+  const { calibration: _drop, ...rest } = props.analysis;
+  emit('update:analysis', rest as Analysis);
+}
+
+function setTrajectories(next: Trajectory[]) {
+  update({ trajectories: next });
+}
+function addTrackPoint(p: Point) {
+  const list = [...trajectories.value];
+  let tr = list.find((t) => t.id === activeTrack.value);
+  if (!tr) {
+    tr = { id: newId('trj'), label: `Trajectoire ${list.length + 1}`, color: settings.drawColor, points: [] };
+    list.push(tr);
+    activeTrack.value = tr.id;
+  }
+  const f = frame.value;
+  tr.points = [...tr.points.filter((q) => q.frame !== f), { frame: f, x: p.x, y: p.y }].sort((a, b) => a.frame - b.frame);
+  setTrajectories(list.map((t) => (t.id === tr!.id ? tr! : t)));
+  // Passe à l'image suivante pour pointer la suivante.
+  if (f < lastFrame.value) void showFrame(f + 1);
+}
+function newTrack() {
+  activeTrack.value = null;
+}
+function undoTrackPoint() {
+  const tr = trajectories.value.find((t) => t.id === activeTrack.value) ?? trajectories.value[trajectories.value.length - 1];
+  if (!tr) return;
+  const points = tr.points.slice(0, -1);
+  const last = tr.points[tr.points.length - 1];
+  setTrajectories(points.length ? trajectories.value.map((t) => (t.id === tr.id ? { ...t, points } : t)) : trajectories.value.filter((t) => t.id !== tr.id));
+  if (last) void showFrame(last.frame);
+}
+function trackPath(t: Trajectory): string {
+  return t.points.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+}
+function lengthText(a: Annotation): string {
+  const cal = calibration.value;
+  if (!cal || a.points.length < 2) return '';
+  return formatMeasure(measureLength(a.points[0]!, a.points[1]!, cal), 'm', frNumber);
+}
+function mid(a: Annotation): Point {
+  return { x: (a.points[0]!.x + a.points[1]!.x) / 2, y: (a.points[0]!.y + a.points[1]!.y) / 2 };
 }
 
 function eraseAt(p: Point) {
@@ -577,7 +663,7 @@ function arrowPath(a: Annotation): string {
 }
 function angleText(a: Annotation): string {
   if (a.points.length < 3) return '';
-  return `${frNumber(angleAt(a.points[0]!, a.points[1]!, a.points[2]!), 1)}°`;
+  return formatMeasure(measureAngle(a.points[0]!, a.points[1]!, a.points[2]!, calibration.value?.clickErrorPx), '°', frNumber, 1);
 }
 const fontSize = computed(() => Math.max(W.value, H.value) * 0.028);
 
@@ -796,7 +882,11 @@ const viewportStyle = computed(() => ({
             <canvas ref="canvas" class="layer"></canvas>
             <svg class="layer draw" :viewBox="`0 0 ${W} ${H}`" preserveAspectRatio="none">
               <g v-for="a in draft ? [...visibleAnnotations, draft] : visibleAnnotations" :key="a.id" :stroke="a.color" fill="none">
-                <path v-if="a.kind === 'ligne' || a.kind === 'main'" :d="pathOf(a)" :stroke-width="a.width" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
+                <template v-if="a.kind === 'ligne'">
+                  <path :d="pathOf(a)" :stroke-width="a.width" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
+                  <text v-if="calibration && a.points.length >= 2" :x="mid(a).x" :y="mid(a).y - fontSize * 0.5" :font-size="fontSize" :fill="a.color" stroke="#000" :stroke-width="fontSize * 0.08" paint-order="stroke" font-weight="700" text-anchor="middle">{{ lengthText(a) }}</text>
+                </template>
+                <path v-else-if="a.kind === 'main'" :d="pathOf(a)" :stroke-width="a.width" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
                 <template v-else-if="a.kind === 'fleche'">
                   <path :d="pathOf(a)" :stroke-width="a.width" vector-effect="non-scaling-stroke" stroke-linecap="round" />
                   <path :d="arrowPath(a)" :stroke-width="a.width" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
@@ -843,6 +933,21 @@ const viewportStyle = computed(() => ({
                   paint-order="stroke"
                   font-weight="700"
                 >{{ a.text }}</text>
+              </g>
+              <g v-if="calibration || etalonDraft" class="etalon" stroke="#00e5ff" fill="none">
+                <path
+                  :d="etalonDraft ? `M${etalonDraft.a.x} ${etalonDraft.a.y} L${etalonDraft.b.x} ${etalonDraft.b.y}` : `M${calibration!.a.x} ${calibration!.a.y} L${calibration!.b.x} ${calibration!.b.y}`"
+                  stroke-width="3"
+                  stroke-dasharray="10 6"
+                  vector-effect="non-scaling-stroke"
+                />
+                <circle :cx="(etalonDraft ?? calibration!).a.x" :cy="(etalonDraft ?? calibration!).a.y" :r="fontSize * 0.2" fill="#00e5ff" stroke="none" />
+                <circle :cx="(etalonDraft ?? calibration!).b.x" :cy="(etalonDraft ?? calibration!).b.y" :r="fontSize * 0.2" fill="#00e5ff" stroke="none" />
+                <text v-if="calibration && !etalonDraft" :x="(calibration.a.x + calibration.b.x) / 2" :y="(calibration.a.y + calibration.b.y) / 2 - fontSize * 0.5" :font-size="fontSize" fill="#00e5ff" stroke="#000" :stroke-width="fontSize * 0.08" paint-order="stroke" font-weight="700" text-anchor="middle">étalon {{ frNumber(calibration.meters, 2) }} m</text>
+              </g>
+              <g v-for="t in trajectories" :key="t.id" :stroke="t.color" fill="none">
+                <path :d="trackPath(t)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" opacity="0.8" />
+                <circle v-for="q in t.points" :key="q.frame" :cx="q.x" :cy="q.y" :r="q.frame === frame ? fontSize * 0.32 : fontSize * 0.16" :fill="q.frame === frame ? t.color : 'none'" stroke-width="2" vector-effect="non-scaling-stroke" />
               </g>
             </svg>
           </div>
@@ -954,6 +1059,12 @@ const viewportStyle = computed(() => ({
         >
           <Ico :name="t.icon" :size="20" />
         </button>
+        <template v-if="tool === 'trajectoire'">
+          <span class="sep"></span>
+          <button class="btn ghost small" @click="newTrack">Nouvelle</button>
+          <button class="btn ghost small" @click="undoTrackPoint">Retirer le dernier point</button>
+        </template>
+        <button v-if="calibration && tool === 'etalon'" class="btn ghost small" @click="removeCalibration">Retirer l’étalon</button>
         <span class="sep"></span>
         <button
           v-for="c in COLORS"
