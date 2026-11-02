@@ -39,8 +39,21 @@ export async function createMediaPipeEstimator(opts: MediaPipeOptions): Promise<
   const [{ FilesetResolver, PoseLandmarker }, bytes] = await Promise.all([import('@mediapipe/tasks-vision'), loadModelBytes(opts.modelUrl, opts.onStatus)]);
   const vision = await FilesetResolver.forVisionTasks(opts.wasmBase);
   opts.onStatus?.('Préparation du modèle…');
-  const make = (delegate: 'GPU' | 'CPU') =>
-    PoseLandmarker.createFromOptions(vision, {
+  // Canvas dédié, présent dans la page (certains navigateurs, dont Safari, refusent WebGL sur un canvas hors écran).
+  const makeCanvas = () => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 16;
+    c.style.cssText = 'position:fixed;left:-9999px;width:1px;height:1px;pointer-events:none';
+    c.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(c);
+    return c;
+  };
+  const canvases: HTMLCanvasElement[] = [];
+  const make = (delegate: 'GPU' | 'CPU') => {
+    const canvas = makeCanvas();
+    canvases.push(canvas);
+    return PoseLandmarker.createFromOptions(vision, {
+      canvas,
       baseOptions: { modelAssetBuffer: bytes, delegate },
       runningMode: 'VIDEO',
       numPoses: 1,
@@ -48,25 +61,67 @@ export async function createMediaPipeEstimator(opts: MediaPipeOptions): Promise<
       minPosePresenceConfidence: 0.4,
       minTrackingConfidence: 0.4,
     });
-  let landmarker;
-  let delegate = 'GPU';
+  };
+  // Le mode GPU peut sembler démarrer puis échouer à la première image (contexte WebGL absent ou refusé,
+  // fréquent sur iPad et certains navigateurs) : on le vérifie sur une image d'essai, sinon on passe au processeur.
+  const probe = (lm: Awaited<ReturnType<typeof make>>, ts: number) => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    c.getContext('2d')!.fillRect(0, 0, 64, 64);
+    lm.detectForVideo(c, ts);
+  };
+  let landmarker: Awaited<ReturnType<typeof make>> | undefined;
+  let delegate = 'CPU';
   try {
-    landmarker = await make('GPU');
+    const gpu = await make('GPU');
+    try {
+      probe(gpu, 1);
+      landmarker = gpu;
+      delegate = 'GPU';
+    } catch {
+      gpu.close();
+    }
   } catch {
-    delegate = 'CPU';
-    landmarker = await make('CPU');
+    // pas de GPU : on passe au processeur
   }
-  let last = 0;
+  landmarker ??= await make('CPU');
+  try {
+    probe(landmarker, 2);
+  } catch (e) {
+    landmarker.close();
+    throw new Error(
+      /activeTexture|WebGL|context/i.test(String(e))
+        ? 'le calcul graphique (WebGL) est indisponible ou refusé dans ce navigateur. Essaie Chrome ou Edge sur ordinateur, ou ferme d’autres onglets.'
+        : String(e),
+    );
+  }
+  let last = 2;
+  const detect = (image: FrameImage) => {
+    const r = landmarker!.detectForVideo(image as ImageBitmap | HTMLCanvasElement, last);
+    const pts = r.landmarks[0];
+    return pts ? pts.map((p) => ({ x: p.x, y: p.y, v: p.visibility ?? 0 })) : null;
+  };
   return {
-    name: `MediaPipe BlazePose lite (${delegate})`,
+    get name() {
+      return `MediaPipe BlazePose lite (${delegate})`;
+    },
     async estimate(image, timeMs) {
       last = Math.max(last + 1, Math.round(timeMs));
-      const r = landmarker.detectForVideo(image as ImageBitmap | HTMLCanvasElement, last);
-      const pts = r.landmarks[0];
-      return pts ? pts.map((p) => ({ x: p.x, y: p.y, v: p.visibility ?? 0 })) : null;
+      try {
+        return detect(image);
+      } catch (e) {
+        if (delegate !== 'GPU') throw e;
+        // Le contexte GPU a été perdu en cours d'analyse : on reprend sur le processeur.
+        landmarker!.close();
+        landmarker = await make('CPU');
+        delegate = 'CPU';
+        last = Math.max(last + 1, Math.round(timeMs));
+        return detect(image);
+      }
     },
     dispose() {
-      landmarker.close();
+      landmarker?.close();
+      for (const c of canvases) c.remove();
     },
   };
 }
