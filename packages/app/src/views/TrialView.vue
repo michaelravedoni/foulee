@@ -39,6 +39,7 @@ import ThrowPanel from '../components/ThrowPanel.vue';
 import AutoPanel from '../components/AutoPanel.vue';
 import KinogramPanel from '../components/KinogramPanel.vue';
 import ReportPanel from '../components/ReportPanel.vue';
+import NormBox from '../components/NormBox.vue';
 
 const props = defineProps<{ id: string }>();
 const router = useRouter();
@@ -53,7 +54,7 @@ const analysis = ref<Analysis>(analysisOf(props.id));
 const player = ref<InstanceType<typeof FramePlayer>>();
 const timeline = shallowRef<FrameTimeline | null>(null);
 const currentFrame = ref(0);
-const tab = ref<'reperes' | 'epreuve' | 'mesures' | 'auto' | 'kino' | 'rapport' | 'infos'>('reperes');
+const tab = ref<'reperes' | 'epreuve' | 'mesures' | 'auto' | 'normes' | 'kino' | 'rapport' | 'infos'>('reperes');
 
 watch(
   () => props.id,
@@ -282,6 +283,7 @@ async function trash() {
           <button :class="{ active: tab === 'epreuve' }" @click="tab = 'epreuve'">Épreuve</button>
           <button :class="{ active: tab === 'mesures' }" @click="tab = 'mesures'">Mesures</button>
           <button :class="{ active: tab === 'auto' }" @click="tab = 'auto'">Auto</button>
+          <button :class="{ active: tab === 'normes' }" @click="tab = 'normes'">Normes</button>
           <button :class="{ active: tab === 'kino' }" @click="tab = 'kino'">Kinogramme</button>
           <button :class="{ active: tab === 'rapport' }" @click="tab = 'rapport'">Rapports</button>
           <button :class="{ active: tab === 'infos' }" @click="tab = 'infos'">Essai</button>
@@ -362,6 +364,7 @@ async function trash() {
           @add-events="addEvents"
           @seek="(f) => player?.seek(f)"
         />
+        <NormBox v-else-if="tab === 'normes'" :trial="trial" :analysis="analysis" :fps="fps" />
         <KinogramPanel
           v-else-if="tab === 'kino'"
           :analysis="analysis"

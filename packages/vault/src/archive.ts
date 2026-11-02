@@ -1,5 +1,5 @@
 import { Unzip, UnzipInflate, Zip, ZipDeflate, ZipPassThrough, strToU8 } from 'fflate';
-import { VALIDATORS, type EntityKind } from '@foulee/core';
+import { VALIDATORS, parseNormTable, type EntityKind } from '@foulee/core';
 import { createSha256 } from './hash.js';
 import { DIRS, MANIFEST_KEY, VAULT_FORMAT, type VaultManifest } from './layout.js';
 import type { Vault } from './vault.js';
@@ -138,6 +138,21 @@ export async function importArchive(
       if (m.format !== VAULT_FORMAT) throw new Error('Cette archive n’est pas un coffre Foulée.');
       if (m.formatVersion > 1) throw new Error(`Archive au format v${m.formatVersion}, non prise en charge.`);
       manifestSeen = true;
+      return;
+    }
+    if (name.startsWith(DIRS.norms)) {
+      try {
+        if (!name.endsWith('.json')) throw new Error('fichier inattendu');
+        const table = parseNormTable(JSON.parse(await new Blob(f.chunks as Uint8Array<ArrayBuffer>[]).text()));
+        if (name !== `${DIRS.norms}${table.id}.json`) throw new Error('nom différent de l’identifiant du tableau');
+        if (await vault.provider.exists(name)) report.skipped++;
+        else {
+          await vault.provider.write(name, JSON.stringify(table, null, 2) + '\n');
+          report.added++;
+        }
+      } catch (e) {
+        report.errors.push({ key: name, message: e instanceof Error ? e.message : String(e) });
+      }
       return;
     }
     const kindEntry = KIND_BY_DIR.find(([dir]) => name.startsWith(dir));

@@ -23,3 +23,5 @@ export * from './throws.js';
 export * from './pose.js';
 export * from './autoevents.js';
 export * from './tracker.js';
+export * from './norms.js';
+export * from './trends.js';

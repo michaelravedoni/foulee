@@ -15,6 +15,7 @@ export const router = createRouter({
     { path: '/essais/:id', name: 'essai', component: () => import('./views/TrialView.vue'), props: true },
     { path: '/comparer', name: 'comparer', component: () => import('./views/CompareView.vue') },
     { path: '/replay', name: 'replay', component: () => import('./views/ReplayView.vue') },
+    { path: '/normes', name: 'normes', component: () => import('./views/NormsView.vue') },
     { path: '/coffre', name: 'coffre', component: () => import('./views/VaultView.vue') },
     { path: '/sauvegardes', name: 'sauvegardes', component: () => import('./views/BackupView.vue') },
     { path: '/corbeille', name: 'corbeille', component: () => import('./views/TrashView.vue') },

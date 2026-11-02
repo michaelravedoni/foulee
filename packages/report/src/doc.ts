@@ -29,6 +29,8 @@ export interface ReportInput {
   weather?: string;
   trialNumber: number;
   notes: string;
+  /** Lignes « Références » (normes comparées, avec leur source) ; vide = section omise. */
+  refs?: string[];
   officialResult?: string;
   nominalFps: number;
   captureFps?: number;

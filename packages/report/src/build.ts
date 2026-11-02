@@ -187,6 +187,10 @@ export function buildCoachReport(input: ReportInput): ReportDoc {
   }
 
   // Notes et décisions
+  if (input.refs?.length) {
+    blocks.push({ t: 'h2', text: 'Références' });
+    for (const r of input.refs) blocks.push({ t: 'p', text: r });
+  }
   blocks.push({ t: 'h2', text: 'Notes et décisions d’entraînement' });
   if (input.notes.trim()) blocks.push({ t: 'p', text: input.notes.trim() });
   blocks.push({ t: 'box', text: 'Décisions :', lines: 4 });

@@ -18,6 +18,7 @@ import type { FrameImage } from '@foulee/media';
 import type { HistoryTrial, JumpHistoryTrial, JumpReportInput, ReportImage, ThrowHistoryTrial, ThrowReportInput, ReportInput } from '@foulee/report';
 import { analysisOf, mediaOf, state, trialsOfAthlete } from '../store/data';
 import { formatDate } from '../lib/format';
+import { normRefs } from '../lib/results';
 
 const props = defineProps<{
   trial: Trial;
@@ -165,6 +166,7 @@ async function buildThrowInput(withImages: boolean): Promise<ThrowReportInput | 
     ...(session?.weather ? { weather: session.weather } : {}),
     trialNumber: t.number,
     notes: t.notes,
+    refs: normRefs(t, props.analysis, props.fps),
     ...(t.officialResult ? { officialResult: t.officialResult } : {}),
     nominalFps: media?.nominalFps ?? props.fps,
     ...(t.captureFps ? { captureFps: t.captureFps } : {}),
@@ -194,6 +196,7 @@ async function buildJumpInput(withImages: boolean): Promise<JumpReportInput | nu
     ...(session?.weather ? { weather: session.weather } : {}),
     trialNumber: t.number,
     notes: t.notes,
+    refs: normRefs(t, props.analysis, props.fps),
     ...(t.officialResult ? { officialResult: t.officialResult } : {}),
     nominalFps: media?.nominalFps ?? props.fps,
     ...(t.captureFps ? { captureFps: t.captureFps } : {}),
@@ -224,6 +227,7 @@ async function buildInput(withImages: boolean): Promise<ReportInput | null> {
     ...(session?.weather ? { weather: session.weather } : {}),
     trialNumber: t.number,
     notes: t.notes,
+    refs: normRefs(t, props.analysis, props.fps),
     ...(t.officialResult ? { officialResult: t.officialResult } : {}),
     nominalFps: media?.nominalFps ?? props.fps,
     ...(t.captureFps ? { captureFps: t.captureFps } : {}),

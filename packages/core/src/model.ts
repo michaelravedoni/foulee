@@ -26,6 +26,8 @@ export interface Athlete extends EntityBase {
   lastName: string;
   /** AAAA-MM-JJ */
   birthDate?: string;
+  /** Sexe pour les normes par catégorie (optionnel). */
+  sex?: 'F' | 'M';
   tags: string[];
   notes: string;
   favorite: boolean;

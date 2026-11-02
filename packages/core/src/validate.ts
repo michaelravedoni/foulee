@@ -45,6 +45,7 @@ export function validateAthlete(v: unknown, path = 'athlète'): Athlete {
   str(o, 'firstName', path);
   str(o, 'lastName', path);
   str(o, 'birthDate', path, true);
+  if (o.sex !== undefined && o.sex !== 'F' && o.sex !== 'M') throw new ValidationError('« sex » doit valoir F ou M', path);
   strArray(o, 'tags', path);
   return o as unknown as Athlete;
 }
