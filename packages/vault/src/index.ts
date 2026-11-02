@@ -1,5 +1,6 @@
 export * from './provider.js';
 export * from './opfs.js';
+export * from './idb.js';
 export * from './hash.js';
 export * from './layout.js';
 export * from './vault.js';

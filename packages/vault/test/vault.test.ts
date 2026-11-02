@@ -176,3 +176,24 @@ describe('délais de stockage', () => {
     await expect(withTimeout(Promise.resolve(3), 30, 'test')).resolves.toBe(3);
   });
 });
+
+describe('fournisseur IndexedDB', () => {
+  it('lit, écrit, liste et supprime, et fait un aller-retour de coffre', async () => {
+    await import('fake-indexeddb/auto');
+    const { IdbProvider } = await import('../src/index.js');
+    const p = new IdbProvider('test');
+    await p.write('a/x.json', '{"a":1}');
+    await p.write('a/y.bin', new Uint8Array([1, 2, 3]));
+    await p.write('b/z.json', '{}');
+    expect(await p.list('a/')).toEqual(['a/x.json', 'a/y.bin']);
+    expect(await p.exists('b/z.json')).toBe(true);
+    expect(await (await p.read('a/x.json'))!.text()).toBe('{"a":1}');
+    expect(await p.read('nope')).toBeNull();
+    await p.delete('a/x.json');
+    expect(await p.list('a/')).toEqual(['a/y.bin']);
+    const v = new Vault(p);
+    await v.open();
+    await v.save('athlete', createAthlete({ firstName: 'Léa', lastName: 'Rey' }));
+    expect((await v.loadAll()).athletes).toHaveLength(1);
+  });
+});

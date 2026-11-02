@@ -13,5 +13,8 @@
     "@foulee/core": "workspace:*",
     "@noble/hashes": "^2.4.0",
     "fflate": "^0.8.3"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.2.6"
   }
 }

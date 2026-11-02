@@ -68,6 +68,7 @@ const jobs = computed(() => [...state.jobs.values()]);
       <button class="btn ghost small" @click="offlineReady = false">OK</button>
     </div>
     <div v-if="state.error && !state.failed" class="banner warn">{{ state.error }}</div>
+    <div v-if="state.notice" class="banner info">{{ state.notice }}</div>
 
     <main class="content">
       <div v-if="!state.ready" class="empty">Ouverture du coffre… <span class="small">({{ state.step }})</span></div>
