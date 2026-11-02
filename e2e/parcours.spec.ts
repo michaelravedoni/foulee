@@ -156,3 +156,19 @@ test('le mode Terrain ne casse pas la mise en page', async ({ page }) => {
   expect(again[1]).toBe(again[0]);
   expect(again[2]).toBeGreaterThan(100);
 });
+
+test('si OPFS ne répond pas, le coffre bascule sur IndexedDB et fonctionne', async ({ page }) => {
+  await page.addInitScript(() => {
+    // Simule un profil Safari où OPFS ne répond jamais.
+    Object.defineProperty(navigator.storage, 'getDirectory', { value: () => new Promise(() => undefined) });
+  });
+  await page.goto('./#/athletes');
+  await expect(page.getByText(/IndexedDB à la place/)).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('button', { name: '＋ Ajouter' }).click();
+  await page.getByLabel('Prénom').fill('Zoé');
+  await page.getByRole('button', { name: 'Créer' }).click();
+  await expect(page.getByRole('heading', { name: /Zoé/ })).toBeVisible();
+  await page.reload();
+  await page.goto('./#/athletes');
+  await expect(page.getByText('Zoé')).toBeVisible({ timeout: 15_000 });
+});

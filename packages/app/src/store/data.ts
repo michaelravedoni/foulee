@@ -14,7 +14,7 @@ import {
   type TrainingSession,
   type DisciplineId,
 } from '@foulee/core';
-import { MemoryProvider, OpfsProvider, Vault, safeExt, type StorageProvider } from '@foulee/vault';
+import { IdbProvider, MemoryProvider, OpfsProvider, Vault, safeExt, type StorageProvider } from '@foulee/vault';
 import { probeVideo, canCreateProxy, createProxyInWorker } from '@foulee/media';
 import { settings } from './settings';
 
@@ -27,6 +27,8 @@ export const state = reactive({
   error: '' as string,
   /** Étape en cours à l'ouverture du coffre (affichée si ça bloque). */
   step: 'démarrage',
+  /** Information durable à montrer à l'utilisateur (ex. repli sur IndexedDB). */
+  notice: '' as string,
   /** Vrai si l'ouverture du coffre a échoué : l'app propose de réessayer ou de réinitialiser. */
   failed: false as boolean,
   providerName: '',
@@ -48,23 +50,69 @@ function vault(): Vault {
   return vaultRef.value;
 }
 
+const PROVIDER_KEY = 'foulee.provider';
+
+function preferredProvider(): string | null {
+  try {
+    return localStorage.getItem(PROVIDER_KEY);
+  } catch {
+    return null;
+  }
+}
+function rememberProvider(name: 'idb' | null): void {
+  try {
+    if (name) localStorage.setItem(PROVIDER_KEY, name);
+    else localStorage.removeItem(PROVIDER_KEY);
+  } catch {
+    // ignoré
+  }
+}
+
+/** Repasse sur OPFS au prochain démarrage (les données IndexedDB restent à part : passer par un export). */
+export function retryOpfsNextTime(): void {
+  rememberProvider(null);
+}
+
+async function openWith(provider: StorageProvider): Promise<{ v: Vault; snap: Awaited<ReturnType<Vault['loadAll']>> }> {
+  const v = new Vault(provider, `Foulée ${__APP_VERSION__}`);
+  state.step = `ouverture du coffre (${provider.name})`;
+  await v.open();
+  state.step = 'lecture des fiches';
+  const snap = await v.loadAll();
+  return { v, snap };
+}
+
 export async function initStore(): Promise<void> {
   state.failed = false;
   state.error = '';
+  state.notice = '';
   try {
-    let provider: StorageProvider;
-    if (OpfsProvider.isSupported()) provider = new OpfsProvider();
-    else {
-      provider = new MemoryProvider();
-      state.error = 'Ce navigateur ne permet pas le stockage local (OPFS) : les données seront perdues à la fermeture.';
+    let opened: Awaited<ReturnType<typeof openWith>> | undefined;
+    const tryIdb = async () => {
+      if (!IdbProvider.isSupported()) throw new Error('IndexedDB indisponible.');
+      return openWith(new IdbProvider());
+    };
+    if (preferredProvider() === 'idb') {
+      opened = await tryIdb();
+      state.notice = 'Stockage IndexedDB (OPFS ne répondait pas sur cet appareil).';
+    } else if (OpfsProvider.isSupported()) {
+      try {
+        opened = await openWith(new OpfsProvider());
+      } catch (e) {
+        console.warn('OPFS indisponible, repli sur IndexedDB', e);
+        opened = await tryIdb();
+        rememberProvider('idb');
+        state.notice = `Le stockage OPFS ne répond pas sur cet appareil (${e instanceof Error ? e.message : String(e)}). Foulée utilise IndexedDB à la place.`;
+      }
+    } else if (IdbProvider.isSupported()) {
+      opened = await tryIdb();
+    } else {
+      opened = await openWith(new MemoryProvider());
+      state.error = 'Ce navigateur ne permet aucun stockage local : les données seront perdues à la fermeture.';
     }
-    const v = new Vault(provider, `Foulée ${__APP_VERSION__}`);
-    state.step = 'ouverture du coffre';
-    await v.open();
-    vaultRef.value = v;
-    state.providerName = provider.name;
-    state.step = 'lecture des fiches';
-    await reload();
+    vaultRef.value = opened.v;
+    state.providerName = opened.v.provider.name;
+    applySnapshot(opened.snap);
     if (navigator.storage?.persisted) state.persistent = await navigator.storage.persisted();
   } catch (e) {
     state.failed = true;
@@ -83,6 +131,12 @@ export async function resetLocalStorage(): Promise<void> {
     // dossier déjà absent
   }
   try {
+    indexedDB.deleteDatabase('foulee-vault-idb');
+  } catch {
+    // ignoré
+  }
+  try {
+    localStorage.removeItem(PROVIDER_KEY);
     localStorage.removeItem('foulee.settings.v1');
   } catch {
     // ignoré
@@ -90,7 +144,10 @@ export async function resetLocalStorage(): Promise<void> {
 }
 
 export async function reload(): Promise<void> {
-  const snap = await vault().loadAll();
+  applySnapshot(await vault().loadAll());
+}
+
+function applySnapshot(snap: Awaited<ReturnType<Vault['loadAll']>>): void {
   state.athletes = new Map(snap.athletes.map((a) => [a.id, a]));
   state.sessions = new Map(snap.sessions.map((s) => [s.id, s]));
   state.trials = new Map(snap.trials.map((t) => [t.id, t]));
