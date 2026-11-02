@@ -10,6 +10,8 @@ import {
   migrateManifest,
   safeExt,
   sha256Blob,
+  StorageTimeoutError,
+  withTimeout,
 } from '../src/index.js';
 
 function fakeVideo(size: number, seed = 1): Blob {
@@ -164,5 +166,13 @@ describe('export et import du coffre', () => {
   it('rejette une archive qui n’est pas un coffre', async () => {
     const dst = new Vault(new MemoryProvider());
     await expect(importArchive(dst, new Blob([new Uint8Array([1, 2, 3])]))).rejects.toThrow();
+  });
+});
+
+describe('délais de stockage', () => {
+  it('rejette une opération qui ne répond jamais', async () => {
+    const never = new Promise<never>(() => undefined);
+    await expect(withTimeout(never, 30, 'test')).rejects.toBeInstanceOf(StorageTimeoutError);
+    await expect(withTimeout(Promise.resolve(3), 30, 'test')).resolves.toBe(3);
   });
 });

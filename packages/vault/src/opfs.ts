@@ -1,4 +1,4 @@
-import { assertKey, toBlob, type StorageProvider } from './provider.js';
+import { assertKey, toBlob, withTimeout, type StorageProvider } from './provider.js';
 
 /**
  * Fournisseur OPFS (Origin Private File System), disponible sur Safari/iOS,
@@ -17,9 +17,14 @@ export class OpfsProvider implements StorageProvider {
   }
 
   private root(): Promise<FileSystemDirectoryHandle> {
-    this.rootPromise ??= navigator.storage
-      .getDirectory()
-      .then((r) => r.getDirectoryHandle(this.baseDir, { create: true }));
+    this.rootPromise ??= withTimeout(
+      navigator.storage.getDirectory().then((r) => r.getDirectoryHandle(this.baseDir, { create: true })),
+      10_000,
+      'ouverture du dossier OPFS',
+    ).catch((e) => {
+      this.rootPromise = undefined; // permet de réessayer
+      throw e;
+    });
     return this.rootPromise;
   }
 
@@ -50,12 +55,24 @@ export class OpfsProvider implements StorageProvider {
   }
 
   async read(key: string): Promise<Blob | null> {
-    const fh = await this.fileHandle(key, false);
-    return fh ? fh.getFile() : null;
+    return withTimeout(
+      (async () => {
+        const fh = await this.fileHandle(key, false);
+        return fh ? await fh.getFile() : null;
+      })(),
+      20_000,
+      `lecture de ${key}`,
+    );
   }
 
-  async write(key: string, data: Blob | string | Uint8Array): Promise<void> {
+  write(key: string, data: Blob | string | Uint8Array): Promise<void> {
     const blob = toBlob(data);
+    // Les gros fichiers peuvent être longs à copier : délai proportionnel à la taille.
+    const ms = 30_000 + blob.size / 1000;
+    return withTimeout(this.writeNow(key, blob), ms, `écriture de ${key}`);
+  }
+
+  private async writeNow(key: string, blob: Blob): Promise<void> {
     const fh = await this.fileHandle(key, true);
     if (!fh) throw new Error(`Impossible de créer ${key}`);
     if ('createWritable' in fh && typeof fh.createWritable === 'function') {
@@ -66,7 +83,11 @@ export class OpfsProvider implements StorageProvider {
     await writeViaWorker(this.baseDir, assertKey(key), blob);
   }
 
-  async list(prefix = ''): Promise<string[]> {
+  list(prefix = ''): Promise<string[]> {
+    return withTimeout(this.listNow(prefix), 20_000, `liste de ${prefix || 'la racine'}`);
+  }
+
+  private async listNow(prefix: string): Promise<string[]> {
     const out: string[] = [];
     const parts = prefix.split('/').filter(Boolean);
     // Le préfixe désigne un dossier (« trials/ ») ou un début de nom.
@@ -90,7 +111,7 @@ export class OpfsProvider implements StorageProvider {
   }
 
   async exists(key: string): Promise<boolean> {
-    return (await this.fileHandle(key, false)) !== null;
+    return withTimeout(this.fileHandle(key, false).then((h) => h !== null), 20_000, `test de ${key}`);
   }
 }
 
@@ -122,6 +143,13 @@ function writeViaWorker(baseDir: string, parts: string[], blob: Blob): Promise<v
 
 function createWorker(): Worker {
   const w = new Worker(new URL('./opfs-writer.worker.ts', import.meta.url), { type: 'module' });
+  w.onerror = () => {
+    for (const [id, p] of pending) {
+      pending.delete(id);
+      p.reject(new Error('Le worker d’écriture OPFS a échoué.'));
+    }
+    worker = undefined;
+  };
   w.onmessage = (ev: MessageEvent<{ id: number; error?: string }>) => {
     const p = pending.get(ev.data.id);
     if (!p) return;

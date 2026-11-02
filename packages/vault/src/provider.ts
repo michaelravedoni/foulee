@@ -58,3 +58,19 @@ export class MemoryProvider implements StorageProvider {
     return this.files.has(key);
   }
 }
+
+export class StorageTimeoutError extends Error {
+  constructor(label: string, ms: number) {
+    super(`Le stockage ne répond pas (${label}, plus de ${Math.round(ms / 1000)} s).`);
+    this.name = 'StorageTimeoutError';
+  }
+}
+
+/** Rejette si l'opération de stockage ne répond pas : mieux qu'un écran bloqué. */
+export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new StorageTimeoutError(label, ms)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
