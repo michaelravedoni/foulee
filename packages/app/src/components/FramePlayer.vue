@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue';
 import {
+  RATES,
   UndoStack,
   angleAt,
   arrowHead,
@@ -10,8 +11,10 @@ import {
   hitDistance,
   isAnnotationVisible,
   newId,
+  normalizeLoop,
   realTimeScale,
   simplifyPath,
+  stepRate,
   type Analysis,
   type Annotation,
   type FrameTimeline,
@@ -20,9 +23,10 @@ import {
   type ShapeKind,
   type TimecodeMode,
 } from '@foulee/core';
-import { openFrameSource, type FrameSource } from '@foulee/media';
+import { openFrameSource, type FrameSource, type PlayHandle } from '@foulee/media';
 import { settings } from '../store/settings';
 import { isTypingTarget } from '../lib/keys';
+import Ico from './Ico.vue';
 
 export interface ZoomState {
   scale: number;
@@ -34,6 +38,7 @@ const props = withDefaults(
   defineProps<{
     media: MediaInfo;
     original: Blob;
+    /** Réservé : la lecture se fait par décodage de l'original. */
     proxy?: Blob | null;
     analysis: Analysis;
     captureFps?: number;
@@ -52,34 +57,36 @@ const emit = defineEmits<{
   ready: [FrameTimeline];
 }>();
 
-const SPEEDS = [0.05, 0.1, 0.25, 0.5, 1, 2];
-const SPEED_LABELS: Record<number, string> = { 0.05: '0,05×', 0.1: '0,1×', 0.25: '0,25×', 0.5: '0,5×', 1: '1×', 2: '2×' };
 type Tool = 'deplacer' | ShapeKind | 'gomme';
 const TOOLS: { id: Tool; label: string; icon: string }[] = [
-  { id: 'deplacer', label: 'Déplacer / zoomer', icon: '✋' },
-  { id: 'ligne', label: 'Ligne', icon: '╱' },
-  { id: 'fleche', label: 'Flèche', icon: '↗' },
-  { id: 'main', label: 'Main levée', icon: '✎' },
-  { id: 'cercle', label: 'Cercle', icon: '◯' },
-  { id: 'rectangle', label: 'Rectangle', icon: '▭' },
-  { id: 'angle', label: 'Angle', icon: '∠' },
-  { id: 'texte', label: 'Texte', icon: 'T' },
-  { id: 'gomme', label: 'Gomme', icon: '⌫' },
+  { id: 'deplacer', label: 'Déplacer, zoomer, parcourir', icon: 'hand' },
+  { id: 'ligne', label: 'Ligne', icon: 'line' },
+  { id: 'fleche', label: 'Flèche', icon: 'arrow' },
+  { id: 'main', label: 'Main levée', icon: 'pen' },
+  { id: 'cercle', label: 'Cercle', icon: 'circle' },
+  { id: 'rectangle', label: 'Rectangle', icon: 'rect' },
+  { id: 'angle', label: 'Angle (3 points)', icon: 'angle' },
+  { id: 'texte', label: 'Texte', icon: 'text' },
+  { id: 'gomme', label: 'Gomme', icon: 'erase' },
 ];
 const COLORS = ['#ff3b30', '#ffcc00', '#34c759', '#0a84ff', '#ffffff', '#000000'];
+const SPEED_LABELS: Record<number, string> = { 0.05: '0,05×', 0.1: '0,1×', 0.25: '0,25×', 0.5: '0,5×', 1: '1×', 2: '2×' };
 
+const root = ref<HTMLDivElement>();
 const stage = ref<HTMLDivElement>();
 const viewport = ref<HTMLDivElement>();
 const canvas = ref<HTMLCanvasElement>();
-const video = ref<HTMLVideoElement>();
+const scrub = ref<HTMLDivElement>();
 
 const source = shallowRef<FrameSource | null>(null);
 const timeline = shallowRef<FrameTimeline | null>(null);
 const loadError = ref('');
+const playError = ref('');
 const estimated = ref(false);
+const compat = ref(false);
 const frame = ref(0);
 const playing = ref(false);
-const rate = ref(0.25);
+const rate = ref(settings.rate);
 const loopA = ref<number | null>(null);
 const loopB = ref<number | null>(null);
 const tool = ref<Tool>('deplacer');
@@ -88,13 +95,13 @@ const fullscreen = ref(false);
 const fakeFullscreen = ref(false);
 const localZoom = reactive<ZoomState>({ scale: 1, x: 0, y: 0 });
 const zoom = computed<ZoomState>(() => props.zoom ?? localZoom);
-let playUrl = '';
 
 const W = computed(() => props.media.width || source.value?.width || 1920);
 const H = computed(() => props.media.height || source.value?.height || 1080);
 const fps = computed(() => timeline.value?.nominalFps ?? props.media.nominalFps);
 const scale = computed(() => realTimeScale(fps.value, props.captureFps));
 const lastFrame = computed(() => Math.max(0, (timeline.value?.frameCount ?? 1) - 1));
+const loop = computed(() => normalizeLoop(loopA.value, loopB.value, lastFrame.value));
 
 const timecode = computed(() => {
   const tl = timeline.value;
@@ -108,39 +115,56 @@ const timecode = computed(() => {
   });
 });
 
-// ——— Ouverture ———
+// ——— Ouverture de la source ———
 
-onMounted(async () => {
+let opened = 0;
+async function openSource(forceFallback: boolean) {
+  const token = ++opened;
+  loadError.value = '';
+  playError.value = '';
+  const resumeAt = timeline.value ? frame.value : props.analysis.timeOrigin || 0;
+  stopPlayback();
+  source.value?.dispose();
+  source.value = null;
   try {
-    const opened = await openFrameSource(props.original);
-    source.value = opened.source;
-    timeline.value = opened.source.timeline;
-    estimated.value = opened.estimated;
-    playUrl = URL.createObjectURL(props.proxy ?? props.original);
-    if (video.value) video.value.src = playUrl;
+    const o = await openFrameSource(props.original, { forceFallback });
+    if (token !== opened) {
+      o.source.dispose();
+      return;
+    }
+    source.value = o.source;
+    timeline.value = o.source.timeline;
+    estimated.value = o.estimated;
+    compat.value = o.source.kind !== 'webcodecs';
     await nextTick();
     if (canvas.value) {
-      canvas.value.width = opened.source.width;
-      canvas.value.height = opened.source.height;
+      canvas.value.width = o.source.width;
+      canvas.value.height = o.source.height;
     }
-    emit('ready', opened.source.timeline);
-    await showFrame(props.analysis.timeOrigin || 0);
+    emit('ready', o.source.timeline);
+    await showFrame(resumeAt);
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : String(e);
   }
+}
+
+onMounted(() => {
+  void openSource(false);
   if (props.keyboard) window.addEventListener('keydown', onKey);
   document.addEventListener('fullscreenchange', onFsChange);
 });
 
 onBeforeUnmount(() => {
+  opened++;
   stopPlayback();
+  stopRepeat();
   source.value?.dispose();
-  if (playUrl) URL.revokeObjectURL(playUrl);
+  cancelAnimationFrame(uiRaf);
   window.removeEventListener('keydown', onKey);
   document.removeEventListener('fullscreenchange', onFsChange);
 });
 
-// ——— Affichage d'une image exacte ———
+// ——— Image exacte (à l'arrêt) ———
 
 let drawSeq = 0;
 async function showFrame(i: number): Promise<void> {
@@ -148,150 +172,108 @@ async function showFrame(i: number): Promise<void> {
   const tl = timeline.value;
   if (!src || !tl) return;
   const target = tl.clamp(i);
-  frame.value = target;
-  emit('frame', target);
+  setFrameNow(target);
   const seq = ++drawSeq;
-  const bmp = await src.getFrame(target);
-  if (!bmp || seq !== drawSeq || !canvas.value) return;
-  const ctx = canvas.value.getContext('2d');
-  ctx?.drawImage(bmp, 0, 0, canvas.value.width, canvas.value.height);
+  try {
+    const img = await src.getFrame(target);
+    if (!img || seq !== drawSeq || !canvas.value || playing.value) return;
+    canvas.value.getContext('2d')?.drawImage(img, 0, 0, canvas.value.width, canvas.value.height);
+    playError.value = '';
+  } catch (e) {
+    playError.value = `Image ${target} illisible : ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+function setFrameNow(f: number) {
+  frame.value = f;
+  emit('frame', f);
 }
 
 function seek(i: number) {
-  if (playing.value) pause();
+  pause();
   void showFrame(i);
 }
 function step(n: number) {
-  if (playing.value) pause();
+  pause();
   void showFrame(frame.value + n);
 }
 
-// ——— Lecture ———
+// ——— Lecture : décodage cadencé sur l'horloge, un seul canvas ———
 
-let rafId = 0;
-let steppedLast = 0;
-let steppedTime = 0;
-let stepped = false;
+let handle: PlayHandle | null = null;
+let uiRaf = 0;
+let pendingFrame = -1;
 
-async function play() {
+/** Le canvas est dessiné à chaque image ; l'interface (temps, curseur) au plus une fois par trame d'affichage. */
+function queueUi(idx: number) {
+  pendingFrame = idx;
+  if (uiRaf) return;
+  uiRaf = requestAnimationFrame(() => {
+    uiRaf = 0;
+    if (playing.value && pendingFrame >= 0) setFrameNow(pendingFrame);
+  });
+}
+
+function startPlayback() {
+  const src = source.value;
   const tl = timeline.value;
-  const v = video.value;
-  if (!tl || !v || playing.value) return;
-  if (frame.value >= lastFrame.value) await showFrame(loopA.value ?? 0);
+  if (!src || !tl || playing.value) return;
+  const l = loop.value;
+  let from = frame.value;
+  const end = l ? l.b : lastFrame.value;
+  if (from >= end || (l && from < l.a)) from = l ? l.a : 0;
   playing.value = true;
-  stepped = rate.value < 0.1;
-  if (!stepped) {
-    try {
-      v.playbackRate = rate.value;
-    } catch {
-      stepped = true;
-    }
-  }
-  if (stepped) {
-    steppedTime = tl.timeOf(frame.value);
-    steppedLast = performance.now();
-    rafId = requestAnimationFrame(steppedTick);
-    return;
-  }
-  v.currentTime = tl.timeOf(frame.value) + tl.durationOf(frame.value) / 2;
-  try {
-    await v.play();
-  } catch {
-    // lecture refusée (ex. économie d'énergie) : repli image par image
-    stepped = true;
-    steppedTime = tl.timeOf(frame.value);
-    steppedLast = performance.now();
-    rafId = requestAnimationFrame(steppedTick);
-    return;
-  }
-  watchVideoFrames();
-}
-
-function watchVideoFrames() {
-  const v = video.value!;
-  const tl = timeline.value!;
-  const onFrame = (mediaTime: number) => {
-    if (!playing.value) return;
-    const f = tl.frameAt(mediaTime);
-    frame.value = f;
-    emit('frame', f);
-    if (loopB.value !== null && f >= loopB.value) {
-      v.currentTime = tl.timeOf(loopA.value ?? 0) + tl.durationOf(0) / 2;
-    }
-  };
-  if (typeof (v as HTMLVideoElement).requestVideoFrameCallback === 'function') {
-    const cb = (_now: number, meta: VideoFrameCallbackMetadata) => {
-      onFrame(meta.mediaTime);
-      if (playing.value) v.requestVideoFrameCallback(cb);
-    };
-    v.requestVideoFrameCallback(cb);
-  } else {
-    const tick = () => {
-      onFrame(v.currentTime);
-      if (playing.value) rafId = requestAnimationFrame(tick);
-    };
-    rafId = requestAnimationFrame(tick);
-  }
-}
-
-function steppedTick(now: number) {
-  const tl = timeline.value;
-  if (!playing.value || !tl) return;
-  steppedTime += ((now - steppedLast) / 1000) * rate.value;
-  steppedLast = now;
-  let f = tl.frameAt(steppedTime);
-  const end = loopB.value ?? lastFrame.value;
-  if (f >= end) {
-    if (loopB.value !== null) {
-      f = loopA.value ?? 0;
-      steppedTime = tl.timeOf(f);
-    } else {
-      f = end;
-      void showFrame(f);
-      pause();
-      return;
-    }
-  }
-  if (f !== frame.value) void showFrame(f);
-  rafId = requestAnimationFrame(steppedTick);
+  playError.value = '';
+  const ctx = canvas.value?.getContext('2d');
+  handle = src.play({
+    from,
+    rate: rate.value,
+    loop: l,
+    onFrame: (idx, draw) => {
+      if (ctx && canvas.value) draw(ctx, canvas.value.width, canvas.value.height);
+      queueUi(idx);
+    },
+    onEnd: (reason, error) => {
+      handle = null;
+      playing.value = false;
+      if (pendingFrame >= 0) setFrameNow(pendingFrame);
+      if (reason === 'error') playError.value = `Lecture interrompue : ${error?.message ?? 'erreur de décodage'}`;
+    },
+  });
 }
 
 function stopPlayback() {
-  cancelAnimationFrame(rafId);
-  video.value?.pause();
+  handle?.stop();
+  handle = null;
+  playing.value = false;
+  cancelAnimationFrame(uiRaf);
+  uiRaf = 0;
+  if (pendingFrame >= 0 && timeline.value) setFrameNow(pendingFrame);
+  pendingFrame = -1;
 }
 
 function pause() {
-  if (!playing.value) return;
-  const tl = timeline.value;
-  const v = video.value;
-  playing.value = false;
-  stopPlayback();
-  if (!stepped && tl && v) void showFrame(tl.frameAt(v.currentTime));
+  if (playing.value) stopPlayback();
 }
-
+function play() {
+  startPlayback();
+}
 function togglePlay() {
   if (playing.value) pause();
-  else void play();
+  else play();
 }
 
-function onEnded() {
+/** Redémarre la lecture avec de nouveaux réglages (vitesse, boucle) sans saut visible. */
+function restartIfPlaying() {
   if (!playing.value) return;
-  if (loopB.value !== null || loopA.value !== null) {
-    playing.value = false;
-    void showFrame(loopA.value ?? 0).then(play);
-    return;
-  }
-  pause();
-  void showFrame(lastFrame.value);
+  stopPlayback();
+  startPlayback();
 }
 
 function setRate(r: number) {
   rate.value = r;
-  if (playing.value) {
-    pause();
-    void play();
-  }
+  settings.rate = r;
+  restartIfPlaying();
 }
 
 // ——— Boucle A-B, origine ———
@@ -299,14 +281,17 @@ function setRate(r: number) {
 function setLoopA() {
   loopA.value = frame.value;
   if (loopB.value !== null && loopB.value <= frame.value) loopB.value = null;
+  restartIfPlaying();
 }
 function setLoopB() {
   loopB.value = frame.value;
   if (loopA.value !== null && loopA.value >= frame.value) loopA.value = null;
+  restartIfPlaying();
 }
 function clearLoop() {
   loopA.value = null;
   loopB.value = null;
+  restartIfPlaying();
 }
 function setOrigin() {
   update({ timeOrigin: frame.value });
@@ -315,6 +300,34 @@ function cycleTimecode() {
   const modes: TimecodeMode[] = ['ms', 'image', 'hms'];
   timecodeMode.value = modes[(modes.indexOf(timecodeMode.value) + 1) % modes.length]!;
   settings.timecode = timecodeMode.value;
+}
+
+// ——— Répétition au maintien des boutons image ———
+
+let repeatTimer = 0;
+let repeatInterval = 0;
+function startRepeat(dir: number, e: PointerEvent) {
+  e.preventDefault();
+  (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+  step(dir);
+  stopRepeat();
+  repeatTimer = window.setTimeout(() => {
+    repeatInterval = window.setInterval(() => {
+      const next = frame.value + Math.sign(dir);
+      if (next < 0 || next > lastFrame.value) return stopRepeat();
+      void showFrame(next);
+    }, 60);
+  }, 380);
+}
+function stopRepeat() {
+  clearTimeout(repeatTimer);
+  clearInterval(repeatInterval);
+  repeatTimer = 0;
+  repeatInterval = 0;
+}
+function keyboardClick(dir: 1 | -1 | 10 | -10, e: MouseEvent) {
+  // Les clics souris/tactile sont gérés par pointerdown ; ici seulement le clavier.
+  if (e.detail === 0) step(dir);
 }
 
 // ——— Analyse (dessins, repères) ———
@@ -351,13 +364,15 @@ function clearFrameDrawings() {
 
 const visibleAnnotations = computed(() => props.analysis.annotations.filter((a) => isAnnotationVisible(a, frame.value)));
 
-// ——— Saisie au pointeur : dessin, déplacement, pincement ———
+// ——— Saisie au pointeur sur l'image : dessin, parcours, zoom ———
 
 const pointers = new Map<number, Point>();
 let pinchStart: { dist: number; mid: Point; zoom: ZoomState } | null = null;
 let panStart: { p: Point; zoom: ZoomState } | null = null;
+let scrubStart: { x: number; frame: number; moved: boolean; t: number } | null = null;
+let lastTap = 0;
 const draft = ref<Annotation | null>(null);
-let angleStage = 0; // 0 : rien ; 1 : premier bras tracé
+let angleStage = 0;
 
 function stagePoint(e: PointerEvent): Point {
   const r = stage.value!.getBoundingClientRect();
@@ -372,7 +387,6 @@ function setZoom(z: ZoomState) {
   const r = stage.value?.getBoundingClientRect();
   let { x, y } = z;
   if (r) {
-    // Borne le déplacement pour garder l'image dans le cadre.
     x = Math.min(0, Math.max(r.width * (1 - s), x));
     y = Math.min(0, Math.max(r.height * (1 - s), y));
   }
@@ -388,11 +402,17 @@ function zoomAt(p: Point, factor: number) {
 }
 function onWheel(e: WheelEvent) {
   e.preventDefault();
-  const r = stage.value!.getBoundingClientRect();
-  zoomAt({ x: e.clientX - r.left, y: e.clientY - r.top }, Math.exp(-e.deltaY * 0.0025));
+  if (e.ctrlKey || e.metaKey || zoom.value.scale > 1 || Math.abs(e.deltaY) > Math.abs(e.deltaX) * 2) {
+    const r = stage.value!.getBoundingClientRect();
+    zoomAt({ x: e.clientX - r.left, y: e.clientY - r.top }, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0025)));
+  } else {
+    // glissement horizontal du pavé tactile : parcours image par image
+    step(Math.sign(e.deltaX));
+  }
 }
 
 const drawingEnabled = computed(() => tool.value !== 'deplacer' && !props.analysis.locked);
+const pxPerFrame = computed(() => (settings.terrain ? 9 : 6));
 
 function holdFrames(): number | null {
   return settings.drawHold > 0 ? Math.round(settings.drawHold * fps.value) : null;
@@ -402,9 +422,9 @@ function onPointerDown(e: PointerEvent) {
   stage.value?.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, stagePoint(e));
   if (pointers.size === 2) {
-    // Deux doigts : pincement pour zoomer (annule un tracé en cours).
     draft.value = null;
     angleStage = 0;
+    scrubStart = null;
     const [a, b] = [...pointers.values()] as [Point, Point];
     pinchStart = { dist: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, zoom: { ...zoom.value } };
     panStart = null;
@@ -412,7 +432,9 @@ function onPointerDown(e: PointerEvent) {
   }
   if (pointers.size > 2) return;
   if (!drawingEnabled.value) {
-    panStart = { p: stagePoint(e), zoom: { ...zoom.value } };
+    const p = stagePoint(e);
+    if (zoom.value.scale > 1) panStart = { p, zoom: { ...zoom.value } };
+    scrubStart = { x: p.x, frame: frame.value, moved: false, t: performance.now() };
     return;
   }
   if (playing.value) pause();
@@ -447,9 +469,18 @@ function onPointerMove(e: PointerEvent) {
     setZoom({ scale: s, x: mid.x - (pinchStart.mid.x - z0.x) * k, y: mid.y - (pinchStart.mid.y - z0.y) * k });
     return;
   }
-  if (panStart) {
+  if (!drawingEnabled.value) {
     const p = stagePoint(e);
-    setZoom({ ...panStart.zoom, x: panStart.zoom.x + p.x - panStart.p.x, y: panStart.zoom.y + p.y - panStart.p.y });
+    if (scrubStart && Math.abs(p.x - scrubStart.x) > 8) scrubStart.moved = true;
+    if (panStart) {
+      setZoom({ ...panStart.zoom, x: panStart.zoom.x + p.x - panStart.p.x, y: panStart.zoom.y + p.y - panStart.p.y });
+    } else if (scrubStart?.moved) {
+      // Balayage horizontal : une image tous les quelques pixels (image non zoomée).
+      if (playing.value) pause();
+      const delta = Math.round((p.x - scrubStart.x) / pxPerFrame.value);
+      const target = timeline.value?.clamp(scrubStart.frame + delta) ?? 0;
+      if (target !== frame.value) void showFrame(target);
+    }
     return;
   }
   const d = draft.value;
@@ -461,9 +492,30 @@ function onPointerMove(e: PointerEvent) {
 }
 
 function onPointerUp(e: PointerEvent) {
+  const wasDown = pointers.has(e.pointerId);
   pointers.delete(e.pointerId);
   if (pointers.size < 2) pinchStart = null;
   if (pointers.size === 0) panStart = null;
+  if (!wasDown) return;
+
+  if (!drawingEnabled.value) {
+    const s = scrubStart;
+    scrubStart = null;
+    if (s && !s.moved && pointers.size === 0 && performance.now() - s.t < 350 && e.type === 'pointerup') {
+      const now = performance.now();
+      if (now - lastTap < 320) {
+        // double toucher : zoom ×3 à cet endroit, ou retour à 1×
+        lastTap = 0;
+        if (zoom.value.scale > 1) setZoom({ scale: 1, x: 0, y: 0 });
+        else zoomAt(stagePoint(e), 3);
+      } else {
+        lastTap = now;
+        if (playing.value) pause(); // un toucher pendant la lecture met en pause
+      }
+    }
+    return;
+  }
+
   const d = draft.value;
   if (!d) return;
   const [p0, p1] = d.points as [Point, Point];
@@ -474,7 +526,7 @@ function onPointerUp(e: PointerEvent) {
         draft.value = null;
         return;
       }
-      angleStage = 1; // attend le second bras
+      angleStage = 1;
       return;
     }
     angleStage = 0;
@@ -529,24 +581,71 @@ function angleText(a: Annotation): string {
 }
 const fontSize = computed(() => Math.max(W.value, H.value) * 0.028);
 
-// ——— Barre de temps et molette (jog) ———
+// ——— Barre de temps : pointeur capturé, repères, boucle A-B glissable ———
 
-const markers = computed(() =>
-  props.analysis.events.map((ev) => ({ id: ev.id, frame: ev.frame, label: eventLabel(ev.type, ev.side) })),
-);
+const markers = computed(() => props.analysis.events.map((ev) => ({ id: ev.id, frame: ev.frame, label: eventLabel(ev.type, ev.side) })));
 function pct(f: number) {
   return `${(f / Math.max(1, lastFrame.value)) * 100}%`;
 }
+function frameFromX(clientX: number): number {
+  const r = scrub.value!.getBoundingClientRect();
+  const ratio = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+  return Math.round(ratio * lastFrame.value);
+}
+let scrubbing = false;
+function scrubDown(e: PointerEvent) {
+  if ((e.target as HTMLElement).closest('.handle')) return;
+  scrub.value?.setPointerCapture(e.pointerId);
+  scrubbing = true;
+  pause();
+  void showFrame(frameFromX(e.clientX));
+}
+function scrubMove(e: PointerEvent) {
+  if (scrubbing) void showFrame(frameFromX(e.clientX));
+}
+function scrubUp() {
+  scrubbing = false;
+}
+let dragHandle: 'A' | 'B' | null = null;
+function handleDown(which: 'A' | 'B', e: PointerEvent) {
+  e.stopPropagation();
+  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  dragHandle = which;
+}
+function handleMove(e: PointerEvent) {
+  if (!dragHandle) return;
+  const f = frameFromX(e.clientX);
+  if (dragHandle === 'A') loopA.value = loopB.value !== null ? Math.min(f, loopB.value - 1) : f;
+  else loopB.value = loopA.value !== null ? Math.max(f, loopA.value + 1) : f;
+}
+function handleUp() {
+  if (dragHandle) restartIfPlaying();
+  dragHandle = null;
+}
+function onScrubKey(e: KeyboardEvent) {
+  const big = e.shiftKey ? 10 : 1;
+  if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    e.stopPropagation();
+    step(big);
+  } else if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    e.stopPropagation();
+    step(-big);
+  }
+}
+
+// ——— Molette (jog) ———
 
 let jogStart: { x: number; frame: number } | null = null;
 function jogDown(e: PointerEvent) {
   (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  if (playing.value) pause();
+  pause();
   jogStart = { x: e.clientX, frame: frame.value };
 }
 function jogMove(e: PointerEvent) {
   if (!jogStart) return;
-  const delta = Math.round((e.clientX - jogStart.x) / (settings.terrain ? 10 : 6));
+  const delta = Math.round((e.clientX - jogStart.x) / pxPerFrame.value);
   const target = timeline.value?.clamp(jogStart.frame + delta) ?? 0;
   if (target !== frame.value) void showFrame(target);
 }
@@ -556,7 +655,6 @@ function jogUp() {
 
 // ——— Plein écran et clavier ———
 
-const root = ref<HTMLDivElement>();
 function toggleFullscreen() {
   const el = root.value;
   if (!el) return;
@@ -565,7 +663,7 @@ function toggleFullscreen() {
     fullscreen.value = false;
   } else if (document.fullscreenElement) void document.exitFullscreen();
   else if (el.requestFullscreen) el.requestFullscreen().catch(() => (fakeFullscreen.value = fullscreen.value = true));
-  else fakeFullscreen.value = fullscreen.value = true; // iPhone : plein écran simulé
+  else fakeFullscreen.value = fullscreen.value = true;
 }
 function onFsChange() {
   fullscreen.value = document.fullscreenElement === root.value;
@@ -577,6 +675,7 @@ function onKey(e: KeyboardEvent) {
   const mod = e.ctrlKey || e.metaKey;
   switch (e.key) {
     case ' ':
+    case 'k':
       e.preventDefault();
       togglePlay();
       break;
@@ -590,8 +689,16 @@ function onKey(e: KeyboardEvent) {
       e.preventDefault();
       step(-big);
       break;
+    case 'ArrowUp':
+      e.preventDefault();
+      setRate(stepRate(rate.value, 1));
+      break;
+    case 'ArrowDown':
+      e.preventDefault();
+      setRate(stepRate(rate.value, -1));
+      break;
     case 'Home':
-      seek(0);
+      seek(loop.value?.a ?? 0);
       break;
     case 'End':
       seek(lastFrame.value);
@@ -612,10 +719,11 @@ function onKey(e: KeyboardEvent) {
       if (!mod) toggleFullscreen();
       break;
     case '+':
-      setRate(SPEEDS[Math.min(SPEEDS.length - 1, SPEEDS.indexOf(rate.value) + 1)]!);
+    case '=':
+      setRate(stepRate(rate.value, 1));
       break;
     case '-':
-      setRate(SPEEDS[Math.max(0, SPEEDS.indexOf(rate.value) - 1)]!);
+      setRate(stepRate(rate.value, -1));
       break;
     case 'z':
     case 'Z':
@@ -632,6 +740,7 @@ function onKey(e: KeyboardEvent) {
       }
       break;
     case 'Escape':
+      if (fakeFullscreen.value) toggleFullscreen();
       tool.value = 'deplacer';
       draft.value = null;
       angleStage = 0;
@@ -639,11 +748,22 @@ function onKey(e: KeyboardEvent) {
   }
 }
 
+watch(
+  () => props.original,
+  () => void openSource(compat.value),
+);
+
+function toggleCompat() {
+  void openSource(!compat.value);
+}
+
 defineExpose({ frame, timeline, playing, rate, seek, step, play, pause, setRate, showFrame });
 
 const stageStyle = computed(() => ({
   aspectRatio: `${W.value} / ${H.value}`,
-  width: fullscreen.value ? `min(100%, calc((100dvh - 120px) * ${W.value / H.value}))` : `min(100%, calc(${props.compact ? '42dvh' : '60dvh'} * ${W.value / H.value}))`,
+  width: fakeFullscreen.value || fullscreen.value
+    ? `min(100%, calc((100dvh - 210px) * ${W.value / H.value}))`
+    : `min(100%, calc(${props.compact ? '42dvh' : '62dvh'} * ${W.value / H.value}))`,
 }));
 const viewportStyle = computed(() => ({
   transform: `translate(${zoom.value.x}px, ${zoom.value.y}px) scale(${zoom.value.scale})`,
@@ -651,39 +771,31 @@ const viewportStyle = computed(() => ({
 </script>
 
 <template>
-  <div ref="root" class="player" :class="{ compact, 'fake-fullscreen': fakeFullscreen }">
+  <div ref="root" class="player" :class="{ compact, 'fake-fullscreen': fakeFullscreen, playing }">
     <div v-if="loadError" class="empty">
       <strong>Vidéo illisible sur cet appareil.</strong><br />
       {{ loadError }}
+      <div class="row center" style="margin-top: 12px">
+        <button class="btn secondary small" @click="openSource(true)">Essayer le mode compatibilité</button>
+      </div>
     </div>
     <template v-else>
       <div class="stage-wrap">
         <div
           ref="stage"
           class="stage"
-          :class="{ drawing: drawingEnabled }"
+          :class="{ drawing: drawingEnabled, zoomed: zoom.scale > 1 }"
           :style="stageStyle"
           @pointerdown="onPointerDown"
           @pointermove="onPointerMove"
           @pointerup="onPointerUp"
           @pointercancel="onPointerUp"
           @wheel="onWheel"
-          @dblclick="setZoom({ scale: 1, x: 0, y: 0 })"
         >
           <div ref="viewport" class="viewport" :style="viewportStyle">
-            <video
-              ref="video"
-              class="layer"
-              :class="{ hidden: !playing }"
-              playsinline
-              muted
-              preload="auto"
-              disablepictureinpicture
-              @ended="onEnded"
-            ></video>
-            <canvas ref="canvas" class="layer" :class="{ hidden: playing }"></canvas>
+            <canvas ref="canvas" class="layer"></canvas>
             <svg class="layer draw" :viewBox="`0 0 ${W} ${H}`" preserveAspectRatio="none">
-              <g v-for="a in draft ? [...visibleAnnotations, draft] : visibleAnnotations" :key="a.id" :stroke="a.color" :fill="'none'">
+              <g v-for="a in draft ? [...visibleAnnotations, draft] : visibleAnnotations" :key="a.id" :stroke="a.color" fill="none">
                 <path v-if="a.kind === 'ligne' || a.kind === 'main'" :d="pathOf(a)" :stroke-width="a.width" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
                 <template v-else-if="a.kind === 'fleche'">
                   <path :d="pathOf(a)" :stroke-width="a.width" vector-effect="non-scaling-stroke" stroke-linecap="round" />
@@ -734,57 +846,107 @@ const viewportStyle = computed(() => ({
               </g>
             </svg>
           </div>
+
           <div class="hud">
             <button class="hud-tc mono" title="Changer l’affichage du temps" @pointerdown.stop @click="cycleTimecode">{{ timecode }}</button>
+            <span class="hud-frame mono">{{ frame }} / {{ lastFrame }}</span>
             <span v-if="label" class="hud-label">{{ label }}</span>
             <span v-if="zoom.scale > 1" class="hud-zoom">×{{ frNumber(zoom.scale, 1) }}</span>
+            <span v-if="playing" class="hud-rate">{{ SPEED_LABELS[rate] ?? `${frNumber(rate, 2)}×` }}</span>
           </div>
+
+          <button
+            v-if="source && !playing && !drawingEnabled && !compact"
+            class="bigplay"
+            aria-label="Lecture"
+            @pointerdown.stop
+            @click="play"
+          >
+            <Ico name="play" :size="34" />
+          </button>
           <div v-if="!source" class="stage-loading">Lecture du fichier…</div>
         </div>
       </div>
 
-      <div class="timebar" :aria-label="`Image ${frame} sur ${lastFrame}`">
-        <input
-          type="range"
-          min="0"
-          :max="lastFrame"
-          :value="frame"
-          aria-label="Position"
-          @input="seek(Number(($event.target as HTMLInputElement).value))"
-        />
-        <div class="marks" aria-hidden="true">
-          <span v-if="loopA !== null && loopB !== null" class="loop" :style="{ left: pct(loopA), width: `calc(${pct(loopB)} - ${pct(loopA)})` }"></span>
-          <span v-else-if="loopA !== null" class="loop-edge" :style="{ left: pct(loopA) }"></span>
-          <span class="origin" :style="{ left: pct(analysis.timeOrigin) }" title="t = 0"></span>
-          <span v-for="m in markers" :key="m.id" class="mark" :style="{ left: pct(m.frame) }" :title="m.label"></span>
+      <p v-if="playError" class="banner warn" role="alert">
+        {{ playError }}
+        <button v-if="!compat" class="btn small" @click="openSource(true)">Mode compatibilité</button>
+      </p>
+
+      <div class="timeline">
+        <div
+          ref="scrub"
+          class="scrub"
+          tabindex="0"
+          role="slider"
+          aria-label="Position dans la vidéo"
+          :aria-valuemin="0"
+          :aria-valuemax="lastFrame"
+          :aria-valuenow="frame"
+          @pointerdown="scrubDown"
+          @pointermove="scrubMove"
+          @pointerup="scrubUp"
+          @pointercancel="scrubUp"
+          @keydown="onScrubKey"
+        >
+          <div class="track">
+            <div class="fill" :style="{ width: pct(frame) }"></div>
+            <div v-if="loop" class="loop" :style="{ left: pct(loop.a), width: `calc(${pct(loop.b)} - ${pct(loop.a)})` }"></div>
+            <span class="origin" :style="{ left: pct(analysis.timeOrigin) }" title="t = 0"></span>
+            <span v-for="m in markers" :key="m.id" class="mark" :style="{ left: pct(m.frame) }" :title="m.label"></span>
+          </div>
+          <div class="thumb" :style="{ left: pct(frame) }"></div>
+          <button
+            v-if="loopA !== null"
+            class="handle a"
+            :style="{ left: pct(loopA) }"
+            aria-label="Début de boucle"
+            @pointerdown="handleDown('A', $event)"
+            @pointermove="handleMove"
+            @pointerup="handleUp"
+            @pointercancel="handleUp"
+          >A</button>
+          <button
+            v-if="loopB !== null"
+            class="handle b"
+            :style="{ left: pct(loopB) }"
+            aria-label="Fin de boucle"
+            @pointerdown="handleDown('B', $event)"
+            @pointermove="handleMove"
+            @pointerup="handleUp"
+            @pointercancel="handleUp"
+          >B</button>
         </div>
-      </div>
-      <div class="jog" role="slider" aria-label="Molette : glisser pour avancer image par image" :aria-valuenow="frame" @pointerdown="jogDown" @pointermove="jogMove" @pointerup="jogUp" @pointercancel="jogUp">
-        <span v-for="i in 40" :key="i" class="tick" :style="{ transform: `translateX(${-(frame % 6) * 1}px)` }"></span>
       </div>
 
-      <div class="controls">
-        <div class="row">
-          <button class="btn secondary icon" title="−10 images (Maj+←)" aria-label="Reculer de 10 images" @click="step(-10)">⏪</button>
-          <button class="btn secondary icon" title="Image précédente (←)" aria-label="Image précédente" @click="step(-1)">◀︎</button>
+      <div class="transport">
+        <div class="group">
+          <button class="btn secondary icon" title="Début (Origine)" aria-label="Aller au début" @click="seek(loop?.a ?? 0)"><Ico name="start" /></button>
+          <button class="btn secondary icon" title="−10 images (Maj+←)" aria-label="Reculer de 10 images" @pointerdown="startRepeat(-10, $event)" @pointerup="stopRepeat" @pointercancel="stopRepeat" @click="keyboardClick(-10, $event)"><Ico name="back" /></button>
+          <button class="btn secondary icon" title="Image précédente (←)" aria-label="Image précédente" @pointerdown="startRepeat(-1, $event)" @pointerup="stopRepeat" @pointercancel="stopRepeat" @click="keyboardClick(-1, $event)"><Ico name="prev" /></button>
           <button class="btn icon play" :title="playing ? 'Pause (Espace)' : 'Lecture (Espace)'" :aria-label="playing ? 'Pause' : 'Lecture'" @click="togglePlay">
-            {{ playing ? '❚❚' : '▶︎' }}
+            <Ico :name="playing ? 'pause' : 'play'" :size="26" />
           </button>
-          <button class="btn secondary icon" title="Image suivante (→)" aria-label="Image suivante" @click="step(1)">▶︎❘</button>
-          <button class="btn secondary icon" title="+10 images (Maj+→)" aria-label="Avancer de 10 images" @click="step(10)">⏩</button>
+          <button class="btn secondary icon" title="Image suivante (→)" aria-label="Image suivante" @pointerdown="startRepeat(1, $event)" @pointerup="stopRepeat" @pointercancel="stopRepeat" @click="keyboardClick(1, $event)"><Ico name="next" /></button>
+          <button class="btn secondary icon" title="+10 images (Maj+→)" aria-label="Avancer de 10 images" @pointerdown="startRepeat(10, $event)" @pointerup="stopRepeat" @pointercancel="stopRepeat" @click="keyboardClick(10, $event)"><Ico name="fwd" /></button>
+          <button class="btn secondary icon" title="Fin" aria-label="Aller à la fin" @click="seek(loop?.b ?? lastFrame)"><Ico name="end" /></button>
         </div>
-        <div class="row speeds" role="group" aria-label="Vitesse">
-          <button v-for="s in SPEEDS" :key="s" class="btn ghost small" :class="{ active: rate === s }" @click="setRate(s)">
+        <div class="group seg" role="group" aria-label="Vitesse">
+          <button v-for="s in RATES" :key="s" class="seg-btn" :class="{ active: rate === s }" :aria-pressed="rate === s" @click="setRate(s)">
             {{ SPEED_LABELS[s] }}
           </button>
         </div>
-        <div v-if="!compact" class="row">
-          <button class="btn ghost small" title="Début de boucle ([)" @click="setLoopA">A</button>
-          <button class="btn ghost small" title="Fin de boucle (])" @click="setLoopB">B</button>
-          <button class="btn ghost small" :disabled="loopA === null && loopB === null" title="Effacer la boucle (\)" @click="clearLoop">A-B ✕</button>
+        <div v-if="!compact" class="group">
+          <button class="btn ghost small" :class="{ active: loopA !== null }" title="Début de boucle ([)" @click="setLoopA">A</button>
+          <button class="btn ghost small" :class="{ active: loopB !== null }" title="Fin de boucle (])" @click="setLoopB">B</button>
+          <button class="btn ghost small" :disabled="loopA === null && loopB === null" title="Effacer la boucle (\)" aria-label="Effacer la boucle" @click="clearLoop"><Ico name="loop" :size="16" /> ✕</button>
           <button class="btn ghost small" title="Définir l’image courante comme t = 0 (touche 0)" @click="setOrigin">t = 0</button>
-          <button class="btn ghost small" :title="fullscreen ? 'Quitter le plein écran (F)' : 'Plein écran (F)'" @click="toggleFullscreen">{{ fullscreen ? '✕ Plein écran' : '⛶' }}</button>
+          <button class="btn ghost small icon" :title="fullscreen || fakeFullscreen ? 'Quitter le plein écran (F)' : 'Plein écran (F)'" aria-label="Plein écran" @click="toggleFullscreen"><Ico :name="fullscreen || fakeFullscreen ? 'exit' : 'full'" :size="18" /></button>
         </div>
+      </div>
+
+      <div v-if="!compact" class="jog" role="slider" aria-label="Molette : glisser pour avancer image par image" :aria-valuenow="frame" @pointerdown="jogDown" @pointermove="jogMove" @pointerup="jogUp" @pointercancel="jogUp">
+        <span v-for="i in 48" :key="i" class="tick" :class="{ major: (i + frame) % 6 === 0 }" :style="{ transform: `translateX(${-(frame % 6) * 2}px)` }"></span>
       </div>
 
       <div v-if="!compact" class="toolbar" role="toolbar" aria-label="Dessin">
@@ -795,10 +957,11 @@ const viewportStyle = computed(() => ({
           :class="{ active: tool === t.id }"
           :title="t.label"
           :aria-label="t.label"
+          :aria-pressed="tool === t.id"
           :disabled="t.id !== 'deplacer' && analysis.locked"
           @click="tool = t.id"
         >
-          {{ t.icon }}
+          <Ico :name="t.icon" :size="20" />
         </button>
         <span class="sep"></span>
         <button
@@ -822,25 +985,24 @@ const viewportStyle = computed(() => ({
           <option :value="0">toujours</option>
         </select>
         <span class="sep"></span>
-        <button class="btn ghost small" :disabled="!canUndo" title="Annuler (Ctrl+Z)" aria-label="Annuler" @click="doUndo">↶</button>
-        <button class="btn ghost small" :disabled="!canRedo" title="Rétablir (Ctrl+Maj+Z)" aria-label="Rétablir" @click="doRedo">↷</button>
+        <button class="btn ghost small icon" :disabled="!canUndo" title="Annuler (Ctrl+Z)" aria-label="Annuler" @click="doUndo"><Ico name="undo" :size="18" /></button>
+        <button class="btn ghost small icon" :disabled="!canRedo" title="Rétablir (Ctrl+Maj+Z)" aria-label="Rétablir" @click="doRedo"><Ico name="redo" :size="18" /></button>
         <button class="btn ghost small" title="Effacer les dessins visibles" @click="clearFrameDrawings">Effacer</button>
-        <button
-          class="btn ghost small"
-          :aria-pressed="analysis.locked"
-          title="Verrouiller le calque de dessin"
-          @click="update({ locked: !analysis.locked })"
-        >
-          {{ analysis.locked ? '🔒 Calque' : '🔓 Calque' }}
+        <button class="btn ghost small" :aria-pressed="analysis.locked" title="Verrouiller le calque de dessin" @click="update({ locked: !analysis.locked })">
+          <Ico :name="analysis.locked ? 'lock' : 'unlock'" :size="16" /> Calque
         </button>
       </div>
+
       <p v-if="estimated" class="small muted">Cadence estimée à 30 i/s : le conteneur de ce fichier n’a pas pu être lu.</p>
-      <p v-else-if="source && !compact" class="small muted">
-        Décodage {{ source.kind === 'webcodecs' ? 'WebCodecs (image exacte)' : 'vidéo + requestVideoFrameCallback (repli)' }} ·
-        {{ timeline?.frameCount }} images · {{ frNumber(fps, fps % 1 ? 2 : 0) }} i/s{{ timeline?.variable ? ' (variable)' : '' }} · ±{{
-          frNumber((1000 / fps) * scale, 1)
-        }}
-        ms par image
+      <p v-else-if="source && !compact" class="small muted info-line">
+        <span>
+          {{ source.kind === 'webcodecs' ? 'Décodage WebCodecs (image exacte)' : 'Mode compatibilité (élément vidéo)' }} ·
+          {{ timeline?.frameCount }} images · {{ frNumber(fps, fps % 1 ? 2 : 0) }} i/s{{ timeline?.variable ? ' (variable)' : '' }} · ±{{ frNumber((1000 / fps) * scale, 1) }} ms par image
+        </span>
+        <button class="btn ghost small" @click="toggleCompat">{{ compat ? 'Revenir au décodage exact' : 'Mode compatibilité' }}</button>
+      </p>
+      <p v-if="!compact" class="small muted keys">
+        Espace lecture · ← → image · Maj+← → 10 images · ↑ ↓ vitesse · [ ] boucle · 0 origine · F plein écran · glisser sur l’image pour parcourir · pincer ou double-toucher pour zoomer
       </p>
     </template>
   </div>
@@ -850,7 +1012,7 @@ const viewportStyle = computed(() => ({
 .player {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
 }
 .player.fake-fullscreen,
@@ -859,14 +1021,14 @@ const viewportStyle = computed(() => ({
   inset: 0;
   z-index: 500;
   background: var(--bg);
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  padding: calc(8px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left));
   overflow: auto;
 }
 .stage-wrap {
   display: flex;
   justify-content: center;
   background: var(--stage);
-  border-radius: 12px;
+  border-radius: 14px;
   overflow: hidden;
 }
 .stage {
@@ -875,6 +1037,10 @@ const viewportStyle = computed(() => ({
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  cursor: ew-resize;
+}
+.stage.zoomed {
   cursor: grab;
 }
 .stage.drawing {
@@ -884,6 +1050,7 @@ const viewportStyle = computed(() => ({
   position: absolute;
   inset: 0;
   transform-origin: 0 0;
+  will-change: transform;
 }
 .layer {
   position: absolute;
@@ -892,35 +1059,65 @@ const viewportStyle = computed(() => ({
   height: 100%;
   display: block;
 }
-.layer.hidden {
-  visibility: hidden;
-}
 .draw {
   pointer-events: none;
   overflow: visible;
 }
 .hud {
   position: absolute;
-  left: 8px;
-  top: 8px;
-  right: 8px;
+  left: 10px;
+  top: 10px;
+  right: 10px;
   display: flex;
   gap: 6px;
   align-items: center;
+  flex-wrap: wrap;
   pointer-events: none;
 }
 .hud > * {
-  background: rgb(0 0 0 / 0.6);
+  background: rgb(0 0 0 / 0.62);
   color: #fff;
-  border-radius: 6px;
-  padding: 2px 8px;
+  border-radius: 8px;
+  padding: 3px 9px;
   font-size: 0.85rem;
+  backdrop-filter: blur(6px);
 }
 .hud-tc {
   pointer-events: auto;
   border: 0;
-  font-size: 1rem;
+  font-size: 1.05rem;
   cursor: pointer;
+  min-width: 7ch;
+  text-align: left;
+}
+.hud-frame {
+  color: #cfd8e1;
+}
+.hud-rate {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 700;
+}
+.bigplay {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  border: 0;
+  background: rgb(0 0 0 / 0.5);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition: transform 0.12s, background 0.12s;
+}
+.bigplay:hover {
+  background: var(--accent);
+  transform: translate(-50%, -50%) scale(1.06);
 }
 .stage-loading {
   position: absolute;
@@ -929,42 +1126,130 @@ const viewportStyle = computed(() => ({
   place-items: center;
   color: #fff;
 }
-.timebar {
+
+.timeline {
+  padding: 0 2px;
+}
+.scrub {
   position: relative;
+  height: 40px;
+  touch-action: none;
+  cursor: pointer;
+  outline-offset: 2px;
 }
-.timebar input {
-  width: 100%;
-  accent-color: var(--accent);
-  min-height: 28px;
-}
-.marks {
+.track {
   position: absolute;
-  left: 8px;
-  right: 8px;
-  top: 0;
-  height: 6px;
-  pointer-events: none;
+  left: 0;
+  right: 0;
+  top: 15px;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
 }
-.marks > span {
+.fill {
   position: absolute;
-  top: 0;
-  height: 6px;
-}
-.mark {
-  width: 2px;
-  background: var(--accent);
-}
-.origin {
-  width: 2px;
-  background: var(--ok);
-  height: 10px !important;
+  inset: 0 auto 0 0;
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+  border-radius: 5px;
 }
 .loop {
-  background: color-mix(in srgb, var(--accent) 40%, transparent);
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  background: color-mix(in srgb, var(--ok) 35%, transparent);
+  border-radius: 3px;
 }
-.loop-edge {
-  width: 2px;
+.track .mark {
+  position: absolute;
+  top: -6px;
+  width: 3px;
+  height: 22px;
+  margin-left: -1px;
   background: var(--accent);
+  border-radius: 2px;
+}
+.track .origin {
+  position: absolute;
+  top: -8px;
+  width: 2px;
+  height: 26px;
+  margin-left: -1px;
+  background: var(--ok);
+}
+.thumb {
+  position: absolute;
+  top: 8px;
+  width: 22px;
+  height: 22px;
+  margin-left: -11px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid var(--surface);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.4);
+  pointer-events: none;
+}
+.handle {
+  position: absolute;
+  top: 0;
+  width: 24px;
+  height: 18px;
+  margin-left: -12px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px 5px 2px 2px;
+  background: var(--ok);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 800;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.handle.b {
+  background: var(--warn);
+}
+
+.transport {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+.group {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.play {
+  width: calc(var(--tap) * 1.5);
+}
+.seg {
+  gap: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 3px;
+}
+.seg-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0 10px;
+  min-height: calc(var(--tap) - 12px);
+  min-width: 46px;
+  border-radius: 8px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.seg-btn.active {
+  background: var(--accent);
+  color: var(--accent-text);
 }
 .jog {
   height: 34px;
@@ -981,23 +1266,13 @@ const viewportStyle = computed(() => ({
 }
 .tick {
   width: 2px;
-  height: 60%;
+  height: 40%;
   background: var(--border);
   border-radius: 1px;
 }
-.controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  align-items: center;
-  justify-content: space-between;
-}
-.play {
-  width: calc(var(--tap) * 1.4);
-  font-size: 1.1rem;
-}
-.speeds .btn {
-  min-width: 44px;
+.tick.major {
+  height: 70%;
+  background: var(--muted);
 }
 .toolbar {
   display: flex;
@@ -1007,7 +1282,6 @@ const viewportStyle = computed(() => ({
 }
 .tool {
   min-width: var(--tap);
-  font-size: 1.05rem;
 }
 .sep {
   width: 1px;
@@ -1032,7 +1306,30 @@ const viewportStyle = computed(() => ({
   min-height: calc(var(--tap) - 8px);
   padding: 2px 6px;
 }
-.compact .controls {
-  gap: 4px;
+.info-line {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin: 0;
+}
+.keys {
+  margin: 0;
+}
+.center {
+  justify-content: center;
+}
+.compact .transport {
+  gap: 6px;
+}
+.compact .seg-btn {
+  min-width: 38px;
+  padding: 0 6px;
+}
+@media (max-width: 720px) {
+  .keys {
+    display: none;
+  }
 }
 </style>

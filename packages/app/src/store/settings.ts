@@ -12,17 +12,20 @@ interface Settings {
   drawHold: number;
   replayDelays: number[];
   replayViews: number;
+  /** Vitesse de lecture. */
+  rate: number;
 }
 
 const DEFAULTS: Settings = {
   terrain: false,
-  autoProxy: true,
+  autoProxy: false,
   timecode: 'ms',
   drawColor: '#ff3b30',
   drawWidth: 4,
   drawHold: 1,
   replayDelays: [5, 10, 15],
   replayViews: 1,
+  rate: 0.25,
 };
 
 const KEY = 'foulee.settings.v1';

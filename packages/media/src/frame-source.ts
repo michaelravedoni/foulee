@@ -1,5 +1,5 @@
 import { VideoSampleSink, type InputVideoTrack, type Input, type VideoSample } from 'mediabunny';
-import type { FrameTimeline } from '@foulee/core';
+import { dueTime, endFrameOf, shouldDrop, type DropState, type FrameTimeline, type LoopRange } from '@foulee/core';
 
 /** Image décodée, prête à être dessinée avec drawImage. */
 export type FrameImage = ImageBitmap | HTMLCanvasElement;
@@ -29,6 +29,25 @@ async function snapshot(src: CanvasImageSource, width: number, height: number): 
  * Source d'images exactes : renvoie l'image n° i de la vidéo, quelle que soit
  * la méthode (WebCodecs, ou élément <video> + requestVideoFrameCallback).
  */
+/** Dessine l'image courante dans un canvas, à la taille voulue. */
+export type DrawFrame = (ctx: CanvasRenderingContext2D, width: number, height: number) => void;
+
+export interface PlayOptions {
+  /** Image de départ. */
+  from: number;
+  /** Vitesse relative au temps du fichier (1 = temps du fichier). */
+  rate: number;
+  loop: LoopRange | null;
+  /** Appelé pour chaque image à afficher (déjà cadencé sur l'horloge). */
+  onFrame(index: number, draw: DrawFrame): void;
+  /** Fin de lecture (dernière image atteinte) ou échec. */
+  onEnd(reason: 'end' | 'error', error?: Error): void;
+}
+
+export interface PlayHandle {
+  stop(): void;
+}
+
 export interface FrameSource {
   readonly kind: 'webcodecs' | 'video-element';
   readonly timeline: FrameTimeline;
@@ -36,7 +55,25 @@ export interface FrameSource {
   readonly height: number;
   /** Image n° i ; `null` si une demande plus récente l'a remplacée. */
   getFrame(index: number): Promise<FrameImage | null>;
+  /**
+   * Lecture continue cadencée sur l'horloge : les images en retard sont
+   * sautées, jamais l'ordre. Un seul affichage à la fois (pas d'élément vidéo
+   * visible : tout passe par le canvas du lecteur).
+   */
+  play(options: PlayOptions): PlayHandle;
   dispose(): void;
+}
+
+/** Attend l'instant mural `dueMs` (précis à la trame d'affichage près). */
+function waitUntil(dueMs: number, isStopped: () => boolean): Promise<void> {
+  return new Promise((resolve) => {
+    const tick = () => {
+      if (isStopped() || performance.now() >= dueMs - 3) return resolve();
+      if (dueMs - performance.now() > 40) setTimeout(tick, Math.min(30, dueMs - performance.now() - 20));
+      else requestAnimationFrame(tick);
+    };
+    tick();
+  });
 }
 
 /** Plafond du grand côté des images décodées (mémoire sur iPad). */
@@ -174,6 +211,81 @@ export class WebCodecsFrameSource implements FrameSource {
     return this.cache.get(i) ?? this.nearestCached(i);
   }
 
+  play(opts: PlayOptions): PlayHandle {
+    let stopped = false;
+    const tl = this.timeline;
+    const last = tl.frameCount - 1;
+    const run = async () => {
+      this.target = -1; // abandonne les décodages image fixe en attente
+      await this.busy;
+      await this.iter?.return(undefined);
+      this.iter = null;
+      let start = opts.from;
+      const state: DropState = { lastShownMs: 0 };
+      for (;;) {
+        const end = endFrameOf(opts.loop, last);
+        const tStart = tl.timeOf(start);
+        const wall0 = performance.now();
+        const iter = this.sink.samples(tStart);
+        let reachedEnd = false;
+        try {
+          for await (const sample of iter) {
+            if (stopped || this.disposed) {
+              sample.close();
+              return;
+            }
+            const idx = tl.frameAt(sample.timestamp);
+            if (idx < start) {
+              sample.close();
+              continue;
+            }
+            if (idx > end) {
+              sample.close();
+              reachedEnd = true;
+              break;
+            }
+            const due = dueTime(wall0, tStart, sample.timestamp, opts.rate);
+            const frameMs = (tl.durationOf(idx) * 1000) / opts.rate;
+            if (shouldDrop(performance.now(), due, frameMs, state)) {
+              sample.close();
+              continue;
+            }
+            await waitUntil(due, () => stopped);
+            if (stopped) {
+              sample.close();
+              return;
+            }
+            opts.onFrame(idx, (ctx, w, h) => sample.draw(ctx, 0, 0, w, h));
+            state.lastShownMs = performance.now();
+            sample.close();
+            if (idx >= end) {
+              reachedEnd = true;
+              break;
+            }
+          }
+          reachedEnd = true;
+        } finally {
+          await iter.return(undefined);
+        }
+        if (stopped) return;
+        if (reachedEnd && opts.loop) {
+          start = opts.loop.a;
+          continue;
+        }
+        break;
+      }
+      if (!stopped) opts.onEnd('end');
+    };
+    run().catch((e: unknown) => {
+      if (!stopped) opts.onEnd('error', e instanceof Error ? e : new Error(String(e)));
+    });
+    return {
+      stop: () => {
+        stopped = true;
+      },
+    };
+  }
+
   private nearestCached(i: number): FrameImage | null {
     for (let d = 1; d < 4; d++) {
       const v = this.cache.get(i - d);
@@ -243,6 +355,61 @@ export class VideoElementFrameSource implements FrameSource {
     });
     this.busy = run.catch(() => undefined);
     return run;
+  }
+
+  play(opts: PlayOptions): PlayHandle {
+    let stopped = false;
+    const v = this.video;
+    const tl = this.timeline;
+    const last = tl.frameCount - 1;
+    const seekTo = (f: number) => {
+      v.currentTime = tl.timeOf(f) + tl.durationOf(f) / 2;
+    };
+    const run = async () => {
+      this.target = -1;
+      await this.ready;
+      await this.busy;
+      v.playbackRate = Math.max(0.0625, opts.rate);
+      seekTo(opts.from);
+      await v.play();
+      const end = () => endFrameOf(opts.loop, last);
+      const handle = (mediaTime: number) => {
+        const idx = tl.frameAt(mediaTime);
+        opts.onFrame(idx, (ctx, w, h) => ctx.drawImage(v, 0, 0, w, h));
+        if (idx >= end() || v.ended) {
+          if (opts.loop) seekTo(opts.loop.a);
+          else {
+            v.pause();
+            stopped = true;
+            opts.onEnd('end');
+            return false;
+          }
+        }
+        return true;
+      };
+      if (typeof v.requestVideoFrameCallback === 'function') {
+        const cb = (_now: number, meta: VideoFrameCallbackMetadata) => {
+          if (stopped) return;
+          if (handle(meta.mediaTime)) v.requestVideoFrameCallback(cb);
+        };
+        v.requestVideoFrameCallback(cb);
+      } else {
+        const tick = () => {
+          if (stopped) return;
+          if (handle(v.currentTime)) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }
+    };
+    run().catch((e: unknown) => {
+      if (!stopped) opts.onEnd('error', e instanceof Error ? e : new Error(String(e)));
+    });
+    return {
+      stop: () => {
+        stopped = true;
+        v.pause();
+      },
+    };
   }
 
   dispose(): void {
