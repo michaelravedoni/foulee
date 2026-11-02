@@ -133,3 +133,20 @@ s’en éloignent de plus de 25 %.
 - Journal de modifications par appareil (`journal/<appareil>.ndjson`) pour la synchronisation (phase 5).
 - Fichiers `calibrations/` et `measures/` (phases 2 et 3), avec version de la spécification d’épreuve.
 - Chiffrement optionnel côté appareil avant envoi vers un fournisseur externe.
+
+## Coffre chiffré (sauvegardes)
+
+Une sauvegarde peut être chiffrée ; le coffre local, lui, reste en clair sur l'appareil. Le fichier `encryption.json` (en clair)
+décrit la dérivation de clé :
+
+```json
+{ "format": "foulee-encryption", "version": 1, "kdf": "PBKDF2-SHA256", "iterations": 600000, "salt": "<base64>", "check": "<base64>" }
+```
+
+- Clé AES-256 = PBKDF2-SHA256(phrase secrète normalisée NFC, sel, itérations). `check` est « foulee » chiffré, pour vérifier la phrase.
+- Chaque fichier du coffre (sauf `encryption.json`) est remplacé par : `FLE1` · taille de bloc (u32 gros-boutiste, 4 Mio par défaut)
+  · pour chaque bloc, IV de 12 octets suivi du texte chiffré AES-GCM et de son étiquette de 16 octets.
+- Données authentifiées de chaque bloc : chemin du fichier, rang du bloc, indicateur « dernier bloc » (refus d'un fichier tronqué,
+  réordonné ou copié sous un autre nom).
+- Les chemins et les tailles ne sont pas chiffrés (identifiants et empreintes seulement).
+- Sans la phrase secrète, **aucune récupération n'est possible**.

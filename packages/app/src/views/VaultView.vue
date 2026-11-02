@@ -107,7 +107,10 @@ async function buildProxies() {
 
 <template>
   <section class="stack">
-    <h1>Coffre</h1>
+    <div class="spread">
+      <h1>Coffre</h1>
+      <RouterLink class="btn secondary small" to="/sauvegardes">Sauvegardes et restauration →</RouterLink>
+    </div>
     <p class="muted">
       Toutes les données sont dans un coffre au format ouvert, sur cet appareil ({{ state.providerName }}). Exporte-le
       régulièrement : l’archive ZIP se relit sans l’application et se réimporte sur un autre appareil.

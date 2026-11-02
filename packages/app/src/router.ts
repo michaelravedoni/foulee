@@ -16,6 +16,7 @@ export const router = createRouter({
     { path: '/comparer', name: 'comparer', component: () => import('./views/CompareView.vue') },
     { path: '/replay', name: 'replay', component: () => import('./views/ReplayView.vue') },
     { path: '/coffre', name: 'coffre', component: () => import('./views/VaultView.vue') },
+    { path: '/sauvegardes', name: 'sauvegardes', component: () => import('./views/BackupView.vue') },
     { path: '/corbeille', name: 'corbeille', component: () => import('./views/TrashView.vue') },
     { path: '/diagnostic', name: 'diagnostic', component: () => import('./views/DiagnosticView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' },
