@@ -199,6 +199,8 @@ La licence du projet est provisoirement « tous droits réservés » (voir `LICE
   repères `source: 'auto'` avec leur confiance, modifiables et supprimables comme les autres.
 - **Suivi de point** (`tracker.ts` + `track.ts`) : corrélation croisée normalisée avec affinage sous-pixel, motif renouvelé à chaque image, arrêt explicite
   quand la corrélation tombe sous 0,55 (jamais de position inventée). Utilisé par « Suivre automatiquement » (outil Trajectoire, 60 images au plus).
+- Le mode GPU est vérifié sur une image d'essai ; s'il échoue (contexte WebGL refusé, fréquent selon le navigateur), l'analyse passe au processeur. Sans WebGL du tout,
+  l'erreur est expliquée en français (MediaPipe a besoin de WebGL même en mode processeur).
 - Squelette dessiné sur la vidéo (calque SVG, désactivable).
 - Vérifié avec le vrai modèle sur une photo d'athlète (30 poses sur 30, squelette aligné). **Non vérifié** : appuis sur de vraies courses (aucune vidéo de
   sprint disponible dans l'environnement de développement) ; seuils (fenêtre 0,5 s, bas de course 30 %, contact ≥ 40 ms) à régler sur des vidéos réelles.
