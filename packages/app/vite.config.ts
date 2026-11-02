@@ -53,6 +53,10 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,
+        runtimeCaching: [
+          // Moteur de pose : gros fichiers WebAssembly, gardés après le premier usage.
+          { urlPattern: ({ url }: { url: URL }) => url.pathname.includes('/mediapipe/'), handler: 'CacheFirst' as const, options: { cacheName: 'foulee-mediapipe', expiration: { maxEntries: 12 } } },
+        ],
       },
       devOptions: { enabled: false },
     }),

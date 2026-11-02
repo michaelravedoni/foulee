@@ -20,3 +20,6 @@ export * from './jumpspec.js';
 export * from './jumps.js';
 export * from './throwspec.js';
 export * from './throws.js';
+export * from './pose.js';
+export * from './autoevents.js';
+export * from './tracker.js';

@@ -187,3 +187,21 @@ La licence du projet est provisoirement « tous droits réservés » (voir `LICE
   (portance). La distance est la valeur saisie sur le repère « chute de l'engin ».
 - Suivi du cercle / position dans le cercle : pas implémenté (l'étalon et la trajectoire libre restent disponibles).
 - `EventTemplate.vue` : gabarit d'événements commun aux sauts et lancers. Rapports : `throwreport.ts`, `throwcsv.ts`.
+
+## Phase 8 : automatisation (pose, appuis, suivi)
+
+- **Pose** : interface `PoseEstimator` (`@foulee/media`), implémentée par MediaPipe BlazePose lite (`@mediapipe/tasks-vision`, licence Apache 2.0), exécutée
+  dans le navigateur (GPU, sinon CPU) : aucune image ne quitte l'appareil. Les fichiers WebAssembly sont copiés dans `public/mediapipe/` avant `dev` et
+  `build` (`scripts/copy-mediapipe.mjs`, non versionnés) et mis en cache par le service worker. Le modèle (6 Mo) est téléchargé une seule fois au premier
+  usage depuis `storage.googleapis.com`, puis gardé dans le cache du navigateur (`foulee-models`). Les poses ne sont pas enregistrées dans le coffre.
+- **Appuis** (`autoevents.ts`, pur et testé sur des séries synthétiques) : un pied est « au sol » quand il est dans le bas de sa course verticale locale
+  (fenêtre glissante) ; début = appui, fin = décollage. Les propositions sont **à valider** (✓/✕, « accepter les sûrs ») ; acceptées, elles deviennent des
+  repères `source: 'auto'` avec leur confiance, modifiables et supprimables comme les autres.
+- **Suivi de point** (`tracker.ts` + `track.ts`) : corrélation croisée normalisée avec affinage sous-pixel, motif renouvelé à chaque image, arrêt explicite
+  quand la corrélation tombe sous 0,55 (jamais de position inventée). Utilisé par « Suivre automatiquement » (outil Trajectoire, 60 images au plus).
+- Squelette dessiné sur la vidéo (calque SVG, désactivable).
+- Vérifié avec le vrai modèle sur une photo d'athlète (30 poses sur 30, squelette aligné). **Non vérifié** : appuis sur de vraies courses (aucune vidéo de
+  sprint disponible dans l'environnement de développement) ; seuils (fenêtre 0,5 s, bas de course 30 %, contact ≥ 40 ms) à régler sur des vidéos réelles.
+  Le critère « temps d'analyse divisé par deux » n'a pas été mesuré.
+- Hors périmètre de cette phase : tracking automatique des dessins (seules les trajectoires se suivent), angles articulaires automatiques, texte de rapport
+  par LLM (les textes de rapport restent générés par règles à partir des mesures).

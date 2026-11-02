@@ -442,3 +442,31 @@ test('marteau : tours, gabarit et rapport', async ({ page }) => {
     expect(head).toBe('%PDF-');
   }
 });
+
+test('suivi automatique d’un point et onglet Auto', async ({ page }) => {
+  await page.goto('./');
+  await page.getByRole('navigation').getByRole('link', { name: 'Athlètes' }).click();
+  await page.getByRole('button', { name: '＋ Ajouter' }).click();
+  await page.getByLabel('Prénom').fill('Ana');
+  await page.getByLabel('Nom', { exact: true }).fill('Suivi');
+  await page.getByRole('button', { name: 'Créer' }).click();
+  await page.getByRole('navigation').getByRole('link', { name: 'Séances' }).click();
+  await page.getByRole('button', { name: '＋ Nouvelle séance' }).click();
+  await page.locator('input[type=file]').setInputFiles([VIDEO]);
+  await page.getByLabel('Athlète').selectOption({ label: 'Ana Suivi' });
+  await page.getByRole('button', { name: 'Importer', exact: true }).click();
+  await expect(page.getByText(/240 images · 120 i\/s/)).toBeVisible({ timeout: 20_000 });
+  await page.locator('.hud-tc').click();
+  await waitFrame(page, 0);
+
+  // Un point pointé, puis suivi automatique sur les images suivantes.
+  await page.getByRole('button', { name: /Trajectoire/ }).click();
+  const sb = (await page.locator('.stage').boundingBox())!;
+  await page.mouse.click(sb.x + sb.width * 0.5, sb.y + sb.height * 0.5);
+  await page.getByRole('button', { name: 'Suivre automatiquement' }).click();
+  await expect(page.getByText(/point(s)? ajouté/)).toBeVisible({ timeout: 30_000 });
+
+  // L'onglet Auto propose la détection ; sans modèle téléchargé il ne bloque rien.
+  await page.getByRole('button', { name: 'Auto', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Détecter le corps et les appuis' })).toBeEnabled();
+});

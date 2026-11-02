@@ -470,6 +470,7 @@ progress {
   gap: 4px;
   border-bottom: 1px solid var(--border);
   margin-bottom: 12px;
+  flex-wrap: wrap;
 }
 .tabs button {
   appearance: none;
