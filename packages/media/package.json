@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@foulee/core": "workspace:*",
+    "@mediapipe/tasks-vision": "^1.1.1",
     "mediabunny": "1.61.6"
   }
 }

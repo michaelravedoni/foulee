@@ -5,3 +5,5 @@ export * from './proxy.js';
 export * from './proxy-client.js';
 export * from './replay.js';
 export * from './audio.js';
+export * from './pose.js';
+export * from './track.js';

@@ -24,6 +24,8 @@ import {
   type Analysis,
   type FrameTimeline,
   type MarkedEvent,
+  type Landmark,
+  type PoseSample,
   type Trial,
 } from '@foulee/core';
 import { analysisOf, athletes, loadMediaBlobs, mediaOf, moveToTrash, saveAnalysis, saveTrial, state, trialsOfAthlete, ensureProxy } from '../store/data';
@@ -34,6 +36,7 @@ import TagEditor from '../components/TagEditor.vue';
 import SprintPanel from '../components/SprintPanel.vue';
 import JumpPanel from '../components/JumpPanel.vue';
 import ThrowPanel from '../components/ThrowPanel.vue';
+import AutoPanel from '../components/AutoPanel.vue';
 import KinogramPanel from '../components/KinogramPanel.vue';
 import ReportPanel from '../components/ReportPanel.vue';
 
@@ -50,7 +53,7 @@ const analysis = ref<Analysis>(analysisOf(props.id));
 const player = ref<InstanceType<typeof FramePlayer>>();
 const timeline = shallowRef<FrameTimeline | null>(null);
 const currentFrame = ref(0);
-const tab = ref<'reperes' | 'epreuve' | 'mesures' | 'kino' | 'rapport' | 'infos'>('reperes');
+const tab = ref<'reperes' | 'epreuve' | 'mesures' | 'auto' | 'kino' | 'rapport' | 'infos'>('reperes');
 
 watch(
   () => props.id,
@@ -123,6 +126,15 @@ function soundStart(time: number, ratio: number) {
   const events = [...analysis.value.events.filter((x) => x.type !== 'depart'), ev].sort((a, b) => a.frame - b.frame);
   onAnalysis({ ...analysis.value, events });
   player.value?.seek(f);
+}
+const poseMap = shallowRef<Map<number, Landmark[]> | null>(null);
+const showSkeleton = ref(true);
+function onPoses(samples: PoseSample[]) {
+  poseMap.value = new Map(samples.flatMap((p) => (p.lm ? [[p.frame, p.lm] as const] : [])));
+}
+function addEvents(list: MarkedEvent[]) {
+  const events = [...analysis.value.events, ...list].sort((a, b) => a.frame - b.frame);
+  onAnalysis({ ...analysis.value, events });
 }
 function removeEvent(id: string) {
   onAnalysis({ ...analysis.value, events: analysis.value.events.filter((e) => e.id !== id) });
@@ -261,6 +273,7 @@ async function trash() {
           @update:analysis="onAnalysis"
           @ready="(tl) => (timeline = tl)"
           @frame="(f) => (currentFrame = f)"
+          :pose="showSkeleton ? poseMap : null"
         />
       </div>
       <aside class="side card">
@@ -268,6 +281,7 @@ async function trash() {
           <button :class="{ active: tab === 'reperes' }" @click="tab = 'reperes'">Repères</button>
           <button :class="{ active: tab === 'epreuve' }" @click="tab = 'epreuve'">Épreuve</button>
           <button :class="{ active: tab === 'mesures' }" @click="tab = 'mesures'">Mesures</button>
+          <button :class="{ active: tab === 'auto' }" @click="tab = 'auto'">Auto</button>
           <button :class="{ active: tab === 'kino' }" @click="tab = 'kino'">Kinogramme</button>
           <button :class="{ active: tab === 'rapport' }" @click="tab = 'rapport'">Rapports</button>
           <button :class="{ active: tab === 'infos' }" @click="tab = 'infos'">Essai</button>
@@ -337,6 +351,16 @@ async function trash() {
           :timeline="timeline"
           :fps="fps"
           :grab="grabFrame"
+        />
+        <AutoPanel
+          v-else-if="tab === 'auto'"
+          v-model:show-skeleton="showSkeleton"
+          :timeline="timeline"
+          :events="analysis.events"
+          :grab="grabFrame"
+          @poses="onPoses"
+          @add-events="addEvents"
+          @seek="(f) => player?.seek(f)"
         />
         <KinogramPanel
           v-else-if="tab === 'kino'"

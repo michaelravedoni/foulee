@@ -27,8 +27,10 @@ import {
   type Point,
   type ShapeKind,
   type TimecodeMode,
+  type Landmark,
+  SKELETON,
 } from '@foulee/core';
-import { openFrameSource, type FrameSource, type PlayHandle } from '@foulee/media';
+import { followPoint, openFrameSource, type FrameSource, type PlayHandle } from '@foulee/media';
 import { settings } from '../store/settings';
 import { isTypingTarget } from '../lib/keys';
 import Ico from './Ico.vue';
@@ -51,8 +53,10 @@ const props = withDefaults(
     keyboard?: boolean;
     zoom?: ZoomState;
     label?: string;
+    /** Poses estimées (image → points), dessinées en squelette. */
+    pose?: Map<number, Landmark[]> | null;
   }>(),
-  { proxy: null, captureFps: undefined, compact: false, keyboard: false, zoom: undefined, label: '' },
+  { proxy: null, captureFps: undefined, compact: false, keyboard: false, zoom: undefined, label: '', pose: null },
 );
 
 const emit = defineEmits<{
@@ -603,6 +607,56 @@ function addTrackPoint(p: Point) {
   // Passe à l'image suivante pour pointer la suivante.
   if (f < lastFrame.value) void showFrame(f + 1);
 }
+const following = ref(false);
+const followMsg = ref('');
+let followAbort: AbortController | null = null;
+/** Suit automatiquement le dernier point de la trajectoire active sur les images suivantes. */
+async function autoFollow() {
+  const src = source.value;
+  const tl = timeline.value;
+  const tr = trajectories.value.find((t) => t.id === activeTrack.value) ?? trajectories.value[trajectories.value.length - 1];
+  const last = tr?.points[tr.points.length - 1];
+  if (!src || !tl || !tr || !last) {
+    followMsg.value = 'Pointe d’abord l’engin sur une image.';
+    return;
+  }
+  following.value = true;
+  followMsg.value = '';
+  followAbort = new AbortController();
+  try {
+    const r = await followPoint((f) => src.getFrame(tl.clamp(f)), last, {
+      toFrame: Math.min(lastFrame.value, last.frame + 59),
+      videoWidth: W.value,
+      signal: followAbort.signal,
+    });
+    if (r.points.length) {
+      const merged = [...tr.points.filter((q) => !r.points.some((n) => n.frame === q.frame)), ...r.points].sort((a, b) => a.frame - b.frame);
+      setTrajectories(trajectories.value.map((t) => (t.id === tr.id ? { ...t, points: merged } : t)));
+      await showFrame(r.points[r.points.length - 1]!.frame);
+    }
+    const why = { fin: '', perdu: ' Suivi arrêté : motif perdu, corrige à la main puis relance.', bord: ' Suivi arrêté au bord de l’image.', annule: ' Suivi interrompu.' }[r.stopped];
+    followMsg.value = `${r.points.length} point${r.points.length > 1 ? 's' : ''} ajouté${r.points.length > 1 ? 's' : ''}.${why}`;
+  } finally {
+    following.value = false;
+  }
+}
+function stopFollow() {
+  followAbort?.abort();
+}
+const skeletonLines = computed(() => {
+  const lm = props.pose?.get(frame.value);
+  if (!lm) return null;
+  const w = W.value;
+  const h = H.value;
+  return {
+    lines: SKELETON.flatMap(([a, b]) => {
+      const p = lm[a];
+      const q = lm[b];
+      return p && q && p.v > 0.3 && q.v > 0.3 ? [`M${(p.x * w).toFixed(1)} ${(p.y * h).toFixed(1)}L${(q.x * w).toFixed(1)} ${(q.y * h).toFixed(1)}`] : [];
+    }).join(''),
+    dots: lm.filter((p) => p.v > 0.3).map((p) => ({ x: p.x * w, y: p.y * h })),
+  };
+});
 function newTrack() {
   activeTrack.value = null;
 }
@@ -953,6 +1007,10 @@ const viewportStyle = computed(() => ({
                 <circle :cx="(etalonDraft ?? calibration!).b.x" :cy="(etalonDraft ?? calibration!).b.y" :r="fontSize * 0.2" fill="#00e5ff" stroke="none" />
                 <text v-if="calibration && !etalonDraft" :x="(calibration.a.x + calibration.b.x) / 2" :y="(calibration.a.y + calibration.b.y) / 2 - fontSize * 0.5" :font-size="fontSize" fill="#00e5ff" stroke="#000" :stroke-width="fontSize * 0.08" paint-order="stroke" font-weight="700" text-anchor="middle">étalon {{ frNumber(calibration.meters, 2) }} m</text>
               </g>
+              <g v-if="skeletonLines" class="skeleton" stroke="#22d3ee" fill="#22d3ee">
+                <path :d="skeletonLines.lines" fill="none" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linecap="round" opacity="0.9" />
+                <circle v-for="(d, i) in skeletonLines.dots" :key="i" :cx="d.x" :cy="d.y" :r="fontSize * 0.14" stroke="none" opacity="0.9" />
+              </g>
               <g v-for="t in trajectories" :key="t.id" :stroke="t.color" fill="none">
                 <path :d="trackPath(t)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" opacity="0.8" />
                 <circle v-for="q in t.points" :key="q.frame" :cx="q.x" :cy="q.y" :r="q.frame === frame ? fontSize * 0.32 : fontSize * 0.16" :fill="q.frame === frame ? t.color : 'none'" stroke-width="2" vector-effect="non-scaling-stroke" />
@@ -1071,6 +1129,9 @@ const viewportStyle = computed(() => ({
           <span class="sep"></span>
           <button class="btn ghost small" @click="newTrack">Nouvelle</button>
           <button class="btn ghost small" @click="undoTrackPoint">Retirer le dernier point</button>
+          <button v-if="!following" class="btn secondary small" title="Suit le dernier point sur les images suivantes (jusqu'à 60)" @click="autoFollow">Suivre automatiquement</button>
+          <button v-else class="btn ghost small" @click="stopFollow">Arrêter le suivi</button>
+          <span v-if="followMsg" class="small muted" role="status">{{ followMsg }}</span>
         </template>
         <button v-if="calibration && tool === 'etalon'" class="btn ghost small" @click="removeCalibration">Retirer l’étalon</button>
         <span class="sep"></span>
