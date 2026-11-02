@@ -4,3 +4,4 @@ export * from './open.js';
 export * from './proxy.js';
 export * from './proxy-client.js';
 export * from './replay.js';
+export * from './audio.js';

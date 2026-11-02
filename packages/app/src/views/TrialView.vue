@@ -30,6 +30,7 @@ import FramePlayer from '../components/FramePlayer.vue';
 import { isTypingTarget } from '../lib/keys';
 import TagEditor from '../components/TagEditor.vue';
 import SprintPanel from '../components/SprintPanel.vue';
+import KinogramPanel from '../components/KinogramPanel.vue';
 
 const props = defineProps<{ id: string }>();
 const router = useRouter();
@@ -44,7 +45,7 @@ const analysis = ref<Analysis>(analysisOf(props.id));
 const player = ref<InstanceType<typeof FramePlayer>>();
 const timeline = shallowRef<FrameTimeline | null>(null);
 const currentFrame = ref(0);
-const tab = ref<'reperes' | 'epreuve' | 'mesures' | 'infos'>('reperes');
+const tab = ref<'reperes' | 'epreuve' | 'mesures' | 'kino' | 'infos'>('reperes');
 
 watch(
   () => props.id,
@@ -100,6 +101,18 @@ function mark(type: string, side?: 'G' | 'D', position?: number) {
   const kept = position === undefined ? analysis.value.events : analysis.value.events.filter((x) => !(x.type === type && x.position === position));
   const events = [...kept, ev].sort((a, b) => a.frame - b.frame);
   onAnalysis({ ...analysis.value, events });
+}
+async function grabFrame(f: number) {
+  return (await player.value?.grab(f)) ?? null;
+}
+function soundStart(time: number, ratio: number) {
+  const tl = timeline.value;
+  if (!tl) return;
+  const f = tl.nearestFrame(time);
+  const ev: MarkedEvent = { id: newId('evt'), type: 'depart', frame: f, time: tl.timeOf(f), source: 'auto', confidence: Math.min(1, ratio / 3), label: 'départ au son' };
+  const events = [...analysis.value.events.filter((x) => x.type !== 'depart'), ev].sort((a, b) => a.frame - b.frame);
+  onAnalysis({ ...analysis.value, events });
+  player.value?.seek(f);
 }
 function removeEvent(id: string) {
   onAnalysis({ ...analysis.value, events: analysis.value.events.filter((e) => e.id !== id) });
@@ -245,6 +258,7 @@ async function trash() {
           <button :class="{ active: tab === 'reperes' }" @click="tab = 'reperes'">Repères</button>
           <button :class="{ active: tab === 'epreuve' }" @click="tab = 'epreuve'">Épreuve</button>
           <button :class="{ active: tab === 'mesures' }" @click="tab = 'mesures'">Mesures</button>
+          <button :class="{ active: tab === 'kino' }" @click="tab = 'kino'">Kinogramme</button>
           <button :class="{ active: tab === 'infos' }" @click="tab = 'infos'">Essai</button>
         </div>
         <div v-if="tab === 'reperes'" class="stack">
@@ -277,8 +291,19 @@ async function trash() {
           :timeline="timeline"
           :fps="fps"
           :time-scale="timeScale"
+          :original="original"
           @mark="mark"
+          @sound-start="soundStart"
           @seek="(f) => player?.seek(f)"
+          @remove="removeEvent"
+        />
+        <KinogramPanel
+          v-else-if="tab === 'kino'"
+          :analysis="analysis"
+          :timeline="timeline"
+          :time-scale="timeScale"
+          :title="`${athlete ? athleteName(athlete) : ''}-${trial.discipline}-${trial.number}`"
+          :grab="grabFrame"
         />
         <div v-else-if="tab === 'mesures'" class="stack measures">
           <p class="small muted">

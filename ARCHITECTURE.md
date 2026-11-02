@@ -122,5 +122,9 @@ La licence du projet est provisoirement « tous droits réservés » (voir `LICE
 - `packages/core/src/sprint.ts` : fonctions pures. Splits avec marge (au plus une image par extrémité), vitesses, profil
   Vmax/τ (modèle mono-exponentiel ajusté par moindres carrés, marges à 2 écarts-types, F0 = Vmax/τ, Pmax = F0·Vmax/4),
   pas, fréquence, contacts, vol, contrôles. Tests sur un 100 m synthétique de référence.
-- Pas encore faits (à venir) : photo-finish par fente, détection de départ au son, kinogramme semi-manuel, indice de
-  technique des haies, héritage entre spécifications au-delà du sprint.
+- Départ au son (`core/audio.ts`, `media/audio.ts`) : enveloppe de crête au pas de 2 ms, seuil adaptatif au bruit de fond,
+  candidats classés par niveau ; le retard du son (distance au pistolet / 343 m/s) est retiré. Le repère créé a
+  `source: "auto"` et une confiance ; la précision est celle de l'image, à vérifier à l'œil.
+- Kinogramme semi-manuel (`core/kinogram.ts`, `KinogramPanel.vue`) : planche d'images aux repères marqués ou régulières,
+  export PNG. Les dessins ne sont pas inclus.
+- Pas encore faits : photo-finish par fente, indice de technique des haies, héritage entre spécifications au-delà du sprint.

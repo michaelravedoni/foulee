@@ -160,6 +160,23 @@ test('séance complète : athlète, séance, import, image par image, dessin, co
   await page.getByRole('button', { name: 'Repères', exact: true }).click();
   await expect(page.locator('.events li')).toHaveCount(3); // départ, arrivée, un seul 30 m
 
+  // Départ au son : le coup est à 1,0 s dans la vidéo de test (image 120 à 120 i/s)
+  await page.getByRole('button', { name: 'Épreuve', exact: true }).click();
+  await page.getByRole('button', { name: 'Détecter le départ' }).click();
+  await expect(page.getByText(/le plus fort/)).toBeVisible({ timeout: 20_000 });
+  await page.getByRole('button', { name: 'Utiliser comme départ' }).first().click();
+  await expect(page.getByRole('button', { name: /^Départ img 1(19|2[0-2])$/ })).toBeVisible();
+
+  // Supprimer un repère depuis le panneau
+  await page.getByRole('button', { name: /Supprimer Passage repère/ }).first().click();
+  await page.getByRole('button', { name: 'Repères', exact: true }).click();
+  await expect(page.locator('.events li')).toHaveCount(2);
+
+  // Kinogramme à partir des repères
+  await page.getByRole('button', { name: 'Kinogramme', exact: true }).click();
+  await page.getByRole('button', { name: /Générer/ }).click();
+  await expect(page.getByRole('button', { name: 'Télécharger en PNG' })).toBeVisible({ timeout: 20_000 });
+
   // Comparaison côte à côte
   await expect(page.getByRole('link', { name: 'Comparer au précédent' })).toBeVisible();
   await page.goto('./#/seances');
