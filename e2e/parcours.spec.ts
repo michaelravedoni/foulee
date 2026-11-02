@@ -53,7 +53,14 @@ test('séance complète : athlète, séance, import, image par image, dessin, co
   const stepped = await canvasHash(page);
   await page.keyboard.press('End');
   await waitFrame(page, 239);
-  await page.locator('.timebar input').fill('37');
+  // Clic sur la barre : position proportionnelle, puis ajustement à l'image près au clavier.
+  const sbox = (await page.locator('.scrub .track').boundingBox())!;
+  await page.mouse.click(sbox.x + sbox.width * (37 / 239), sbox.y + sbox.height / 2);
+  await expect(page.locator('.hud-tc')).not.toHaveText('img 239');
+  const cur = Number((await page.locator('.hud-tc').innerText()).replace('img ', ''));
+  expect(Math.abs(cur - 37)).toBeLessThanOrEqual(2);
+  for (let i = cur; i < 37; i++) await page.keyboard.press('ArrowRight');
+  for (let i = cur; i > 37; i--) await page.keyboard.press('ArrowLeft');
   await waitFrame(page, 37);
   expect(await canvasHash(page)).toBe(stepped);
   // Pas arrière
@@ -63,6 +70,26 @@ test('séance complète : athlète, séance, import, image par image, dessin, co
   await page.keyboard.press('ArrowRight');
   await waitFrame(page, 37);
   expect(await canvasHash(page)).toBe(stepped);
+
+  // Lecture continue : avance, ne fige pas, puis s'arrête à la pause.
+  await page.keyboard.press('Home');
+  await waitFrame(page, 0);
+  const seen = new Set<string>();
+  await page.keyboard.press('Space');
+  for (let i = 0; i < 12; i++) {
+    await page.waitForTimeout(100);
+    seen.add(await page.locator('.hud-tc').innerText());
+  }
+  await page.keyboard.press('Space');
+  expect(seen.size).toBeGreaterThanOrEqual(4);
+  await page.waitForTimeout(200);
+  const paused = await page.locator('.hud-tc').innerText();
+  await page.waitForTimeout(300);
+  await expect(page.locator('.hud-tc')).toHaveText(paused);
+  await page.keyboard.press('Home');
+  await waitFrame(page, 0);
+  for (let i = 0; i < 37; i++) await page.keyboard.press('ArrowRight');
+  await waitFrame(page, 37);
 
   // Origine du temps et repère
   await page.keyboard.press('0');

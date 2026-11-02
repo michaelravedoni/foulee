@@ -9,3 +9,4 @@ export * from './geometry.js';
 export * from './factories.js';
 export * from './events.js';
 export * from './validate.js';
+export * from './playback.js';
