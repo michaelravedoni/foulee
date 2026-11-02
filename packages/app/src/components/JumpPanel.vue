@@ -35,11 +35,10 @@ const metricText = (m: { value: { value: number; margin: number }; digits: numbe
 <template>
   <div v-if="spec" class="stack jump">
     <p class="small muted">
-      {{ spec.label }} : avance image par image, puis marque chaque événement ci-dessous. Les positions (en mètres) se lisent depuis la
-      planche ou le point de repère ; avant la planche, saisis une valeur négative. Elles servent à la longueur, aux phases et à la vitesse d’élan.
+      Les positions (en mètres) se lisent depuis la planche ou le point de repère ; avant la planche, saisis une valeur négative. Elles servent à la longueur, aux phases et à la vitesse d’élan.
     </p>
 
-    <EventTemplate :title="`Gabarit du ${spec.label.toLowerCase()}`" :defs="spec.events" :events="analysis.events" @mark="(t, sd, p) => emit('mark', t, sd, p)" @seek="(f) => emit('seek', f)" @remove="(id) => emit('remove', id)" />
+    <EventTemplate :title="`Tous les repères du ${spec.label.toLowerCase()}, avec leurs positions`" collapse-defs :defs="spec.events" :events="analysis.events" @mark="(t, sd, p) => emit('mark', t, sd, p)" @seek="(f) => emit('seek', f)" @remove="(id) => emit('remove', id)" />
 
     <template v-if="result">
       <p v-if="result.missing.length" class="small" role="status">À poser : {{ result.missing.join(', ') }}.</p>

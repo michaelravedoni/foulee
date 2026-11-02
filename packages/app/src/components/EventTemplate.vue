@@ -2,7 +2,7 @@
 import { reactive } from 'vue';
 import { eventLabel, frNumber, type JumpEventDef, type MarkedEvent } from '@foulee/core';
 
-const props = defineProps<{ title: string; defs: JumpEventDef[]; events: MarkedEvent[] }>();
+const props = defineProps<{ title: string; defs: JumpEventDef[]; events: MarkedEvent[]; collapseDefs?: boolean }>();
 const emit = defineEmits<{
   mark: [type: string, side?: 'G' | 'D', position?: number];
   seek: [frame: number];
@@ -32,8 +32,9 @@ const posLabel = (kind: 'distance' | 'hauteur' | undefined) => (kind === 'hauteu
 </script>
 
 <template>
+    <component :is="collapseDefs ? 'details' : 'div'" class="adv">
+    <component :is="collapseDefs ? 'summary' : 'h3'">{{ title }}</component>
     <section class="stack">
-      <h3>{{ title }}</h3>
       <ul class="plain">
         <li v-for="(d, i) in defs" :key="i" class="def stack">
           <div class="row">
@@ -60,10 +61,11 @@ const posLabel = (kind: 'distance' | 'hauteur' | undefined) => (kind === 'hauteu
         </li>
       </ul>
     </section>
+    </component>
 
     <section class="stack">
       <h3>Repères posés</h3>
-      <p v-if="!events.length" class="small muted">Aucun repère.</p>
+      <p v-if="!events.length" class="small muted">Aucun repère posé pour l’instant.</p>
       <ul v-else class="plain small">
         <li v-for="e in events" :key="e.id" class="row">
           <button class="linklike grow" @click="emit('seek', e.frame)">

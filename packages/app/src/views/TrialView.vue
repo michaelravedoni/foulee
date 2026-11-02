@@ -20,6 +20,8 @@ import {
   newId,
   jumpSpecFor,
   throwSpecFor,
+  specFor,
+  isTimeDiscipline,
   realTimeScale,
   type Analysis,
   type FrameTimeline,
@@ -40,6 +42,8 @@ import AutoPanel from '../components/AutoPanel.vue';
 import KinogramPanel from '../components/KinogramPanel.vue';
 import ReportPanel from '../components/ReportPanel.vue';
 import NormBox from '../components/NormBox.vue';
+import MeasureSteps, { type Step } from '../components/MeasureSteps.vue';
+import { resultOf } from '../lib/results';
 
 const props = defineProps<{ id: string }>();
 const router = useRouter();
@@ -54,9 +58,48 @@ const analysis = ref<Analysis>(analysisOf(props.id));
 const player = ref<InstanceType<typeof FramePlayer>>();
 const timeline = shallowRef<FrameTimeline | null>(null);
 const currentFrame = ref(0);
-const tab = ref<'reperes' | 'epreuve' | 'mesures' | 'auto' | 'kino' | 'rapport' | 'infos'>('epreuve');
-const TOOLS = ['reperes', 'auto', 'kino'];
-const inTools = computed(() => TOOLS.includes(tab.value));
+const steps = ref<InstanceType<typeof MeasureSteps>>();
+const stepIntro = 'Avance image par image (flèches ← →, ou glisse sur la vidéo) jusqu’à l’image voulue, puis appuie sur le bouton.';
+const stepList = computed<Step[]>(() => {
+  const t = trial.value;
+  if (!t) return [];
+  const ev = analysis.value.events;
+  const sp = specFor(t.discipline);
+  if (sp) {
+    const hurdles = !!sp.hurdles;
+    const list: Step[] = [{ id: 'depart', type: 'depart', label: 'Départ', done: ev.some((e) => e.type === 'depart') }];
+    sp.splitPoints.forEach((m, i) => {
+      const last = i === sp.splitPoints.length - 1;
+      const type = last ? 'arrivee' : hurdles ? 'haie' : 'passage';
+      list.push({
+        id: `p${i}`,
+        type,
+        label: last ? 'Arrivée' : hurdles ? `Haie ${i + 1}` : `${frNumber(m, 0)} m`,
+        fixed: m,
+        done: ev.some((e) => e.type === type && (type === 'arrivee' ? true : e.position === m)),
+      });
+    });
+    return list;
+  }
+  const defs = jumpSpecFor(t.discipline)?.events ?? throwSpecFor(t.discipline)?.events;
+  return (defs ?? []).map((d, i) => ({
+    id: `d${i}`,
+    type: d.type,
+    label: d.label.split(' (')[0]!,
+    hint: d.hint,
+    ...(d.sided ? { sided: true } : {}),
+    ...(d.required ? {} : { optional: true }),
+    ...(d.position ? { ask: { kind: d.position, ...(d.type === 'appel' ? { initial: '0' } : {}) } } : {}),
+    done: ev.some((e) => e.type === d.type),
+  }));
+});
+const mainResult = computed(() => {
+  const t = trial.value;
+  const r = t ? resultOf(t, analysis.value, media.value, fps.value) : undefined;
+  if (!t || !r || !(r.value > 0)) return '';
+  const f = (v: number, d: number) => v.toFixed(d).replace('.', ',');
+  return `${f(r.value, 2)} ± ${f(r.margin, 3)} ${isTimeDiscipline(t.discipline) ? 's' : 'm'}`;
+});
 
 watch(
   () => props.id,
@@ -220,6 +263,13 @@ function removeTrack(id: string) {
 function onKey(e: KeyboardEvent) {
   if (isTypingTarget(e.target)) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === 'Enter') {
+    // Entrée marque l'étape en cours, sauf si un bouton ou un lien a le focus (Entrée l'active alors).
+    if ((e.target as HTMLElement | null)?.closest?.('button, a, summary, select, details')) return;
+    e.preventDefault();
+    steps.value?.markCurrent(e.shiftKey ? 'D' : 'G');
+    return;
+  }
   const t = BASIC_EVENT_TYPES.find((x) => x.key === e.key.toLowerCase());
   if (!t) return;
   e.preventDefault();
@@ -277,105 +327,70 @@ async function trash() {
           :pose="showSkeleton ? poseMap : null"
         />
       </div>
-      <aside class="side card">
-        <div class="tabs" role="tablist">
-          <button role="tab" :aria-selected="tab === 'epreuve'" :class="{ active: tab === 'epreuve' }" @click="tab = 'epreuve'">Mesurer</button>
-          <button role="tab" :aria-selected="tab === 'mesures'" :class="{ active: tab === 'mesures' }" @click="tab = 'mesures'">Résultats</button>
-          <button role="tab" :aria-selected="tab === 'rapport'" :class="{ active: tab === 'rapport' }" @click="tab = 'rapport'">Rapport</button>
-          <button role="tab" :aria-selected="inTools" :class="{ active: inTools }" @click="inTools || (tab = 'reperes')">Outils</button>
-          <button role="tab" :aria-selected="tab === 'infos'" :class="{ active: tab === 'infos' }" @click="tab = 'infos'">Infos</button>
-        </div>
-        <div v-if="inTools" class="row subtabs">
-          <button class="btn small" :class="tab === 'reperes' ? '' : 'secondary'" @click="tab = 'reperes'">Repères libres</button>
-          <button class="btn small" :class="tab === 'auto' ? '' : 'secondary'" @click="tab = 'auto'">Suivi automatique</button>
-          <button class="btn small" :class="tab === 'kino' ? '' : 'secondary'" @click="tab = 'kino'">Kinogramme</button>
-        </div>
-        <div v-if="tab === 'reperes'" class="stack">
-          <div class="row">
-            <template v-for="t in BASIC_EVENT_TYPES" :key="t.id">
-              <template v-if="t.sided">
-                <button class="btn secondary small" :title="`${t.label} gauche (touche ${t.key})`" @click="mark(t.id, 'G')">{{ t.label }} G</button>
-                <button class="btn secondary small" :title="`${t.label} droit (Maj+${t.key})`" @click="mark(t.id, 'D')">{{ t.label }} D</button>
-              </template>
-              <button v-else class="btn secondary small" :title="`${t.label} (touche ${t.key})`" @click="mark(t.id)">{{ t.label }}</button>
-            </template>
-          </div>
-          <p class="small muted">Marque l’image affichée avec un repère libre. Les temps de section sont dans l’onglet Résultats.</p>
-          <ol v-if="analysis.events.length" class="list events">
-            <li v-for="(ev, i) in analysis.events" :key="ev.id" class="list-item">
-              <button class="linklike grow" @click="player?.seek(ev.frame)">
-                <strong>{{ eventLabel(ev.type, ev.side) }}</strong>
-                <span class="mono small">{{ eventTime(ev) }} · img {{ ev.frame }}</span>
-                <span v-if="i > 0" class="mono small muted">{{ deltaMs(analysis.events[i - 1]!, ev) }}</span>
-              </button>
-              <button class="btn ghost small icon" :aria-label="`Supprimer ${eventLabel(ev.type, ev.side)}`" @click="removeEvent(ev.id)">✕</button>
-            </li>
-          </ol>
-          <p v-else class="muted small">Aucun repère.</p>
-        </div>
-        <JumpPanel
-          v-else-if="tab === 'epreuve' && jumpSpecFor(trial.discipline)"
-          :discipline="trial.discipline"
-          :analysis="analysis"
-          :timeline="timeline"
-          :fps="fps"
-          :time-scale="timeScale"
-          @mark="mark"
-          @seek="(f) => player?.seek(f)"
-          @remove="removeEvent"
-        />
-        <ThrowPanel
-          v-else-if="tab === 'epreuve' && throwSpecFor(trial.discipline)"
-          :discipline="trial.discipline"
-          :analysis="analysis"
-          :timeline="timeline"
-          :fps="fps"
-          :time-scale="timeScale"
-          @mark="mark"
-          @seek="(f) => player?.seek(f)"
-          @remove="removeEvent"
-        />
-        <SprintPanel
-          v-else-if="tab === 'epreuve'"
-          :discipline="trial.discipline"
-          :analysis="analysis"
-          :timeline="timeline"
-          :fps="fps"
-          :time-scale="timeScale"
-          :original="original"
-          @mark="mark"
-          @sound-start="soundStart"
-          @seek="(f) => player?.seek(f)"
-          @remove="removeEvent"
-        />
-        <ReportPanel
-          v-else-if="tab === 'rapport'"
-          :trial="trial"
-          :analysis="analysis"
-          :timeline="timeline"
-          :fps="fps"
-          :grab="grabFrame"
-        />
-        <AutoPanel
-          v-else-if="tab === 'auto'"
-          v-model:show-skeleton="showSkeleton"
-          :timeline="timeline"
-          :events="analysis.events"
-          :grab="grabFrame"
-          @poses="onPoses"
-          @add-events="addEvents"
-          @seek="(f) => player?.seek(f)"
-        />
-        <KinogramPanel
-          v-else-if="tab === 'kino'"
-          :analysis="analysis"
-          :timeline="timeline"
-          :time-scale="timeScale"
-          :title="`${athlete ? athleteName(athlete) : ''}-${trial.discipline}-${trial.number}`"
-          :grab="grabFrame"
-        />
-        <div v-else-if="tab === 'mesures'" class="stack measures">
-          <NormBox :trial="trial" :analysis="analysis" :fps="fps" />
+      <aside class="side">
+        <section class="card stack" aria-labelledby="h-mesure">
+          <h2 id="h-mesure">Mesure</h2>
+          <p v-if="mainResult" class="bigresult" data-testid="main-result">{{ mainResult }}</p>
+          <MeasureSteps ref="steps" :steps="stepList" :intro="stepIntro" @mark="mark" />
+          <JumpPanel
+            v-if="jumpSpecFor(trial.discipline)"
+            :discipline="trial.discipline"
+            :analysis="analysis"
+            :timeline="timeline"
+            :fps="fps"
+            :time-scale="timeScale"
+            @mark="mark"
+            @seek="(f) => player?.seek(f)"
+            @remove="removeEvent"
+          />
+          <ThrowPanel
+            v-else-if="throwSpecFor(trial.discipline)"
+            :discipline="trial.discipline"
+            :analysis="analysis"
+            :timeline="timeline"
+            :fps="fps"
+            :time-scale="timeScale"
+            @mark="mark"
+            @seek="(f) => player?.seek(f)"
+            @remove="removeEvent"
+          />
+          <SprintPanel
+            v-else
+            :discipline="trial.discipline"
+            :analysis="analysis"
+            :timeline="timeline"
+            :fps="fps"
+            :time-scale="timeScale"
+            :original="original"
+            @mark="mark"
+            @sound-start="soundStart"
+            @seek="(f) => player?.seek(f)"
+            @remove="removeEvent"
+          />
+        </section>
+
+        <section class="card stack auto-card" aria-labelledby="h-auto" data-testid="auto-card">
+          <h2 id="h-auto">Analyse automatique</h2>
+          <AutoPanel
+            v-model:show-skeleton="showSkeleton"
+            :timeline="timeline"
+            :events="analysis.events"
+            :grab="grabFrame"
+            @poses="onPoses"
+            @add-events="addEvents"
+            @seek="(f) => player?.seek(f)"
+          />
+        </section>
+
+        <NormBox :trial="trial" :analysis="analysis" :fps="fps" />
+
+        <details class="card more-sec">
+          <summary>Rapport et export</summary>
+          <ReportPanel :trial="trial" :analysis="analysis" :timeline="timeline" :fps="fps" :grab="grabFrame" />
+        </details>
+        <details class="card more-sec">
+          <summary>Étalon, sections et trajectoires</summary>
+        <div class="stack measures">
           <p class="small muted">
             Mesures <strong>indicatives</strong> : valables dans le plan de l’étalon, caméra fixe et à peu près perpendiculaire à la piste.
             Les marges tiennent compte du pointage et de la durée d’une image.
@@ -433,7 +448,46 @@ async function trash() {
             </div>
           </section>
         </div>
-        <div v-else class="stack">
+        </details>
+        <details class="card more-sec">
+          <summary>Repères libres</summary>
+        <div class="stack">
+          <div class="row">
+            <template v-for="t in BASIC_EVENT_TYPES" :key="t.id">
+              <template v-if="t.sided">
+                <button class="btn secondary small" :title="`${t.label} gauche (touche ${t.key})`" @click="mark(t.id, 'G')">{{ t.label }} G</button>
+                <button class="btn secondary small" :title="`${t.label} droit (Maj+${t.key})`" @click="mark(t.id, 'D')">{{ t.label }} D</button>
+              </template>
+              <button v-else class="btn secondary small" :title="`${t.label} (touche ${t.key})`" @click="mark(t.id)">{{ t.label }}</button>
+            </template>
+          </div>
+          <p class="small muted">Marque l’image affichée avec un repère libre. Les temps de section sont dans l’onglet Résultats.</p>
+          <ol v-if="analysis.events.length" class="list events">
+            <li v-for="(ev, i) in analysis.events" :key="ev.id" class="list-item">
+              <button class="linklike grow" @click="player?.seek(ev.frame)">
+                <strong>{{ eventLabel(ev.type, ev.side) }}</strong>
+                <span class="mono small">{{ eventTime(ev) }} · img {{ ev.frame }}</span>
+                <span v-if="i > 0" class="mono small muted">{{ deltaMs(analysis.events[i - 1]!, ev) }}</span>
+              </button>
+              <button class="btn ghost small icon" :aria-label="`Supprimer ${eventLabel(ev.type, ev.side)}`" @click="removeEvent(ev.id)">✕</button>
+            </li>
+          </ol>
+          <p v-else class="muted small">Aucun repère.</p>
+        </div>
+        </details>
+        <details class="card more-sec">
+          <summary>Kinogramme (images en séquence)</summary>
+          <KinogramPanel
+            :analysis="analysis"
+            :timeline="timeline"
+            :time-scale="timeScale"
+            :title="`${athlete ? athleteName(athlete) : ''}-${trial.discipline}-${trial.number}`"
+            :grab="grabFrame"
+          />
+        </details>
+        <details class="card more-sec">
+          <summary>Informations sur l’essai</summary>
+        <div class="stack">
           <TagEditor :model-value="trial.tags" quick :derived="derivedTags(trial, media?.nominalFps)" @update:model-value="(tags) => patch({ tags })" />
           <label class="field">
             Athlète
@@ -473,6 +527,7 @@ async function trash() {
           </div>
           <div><button class="btn ghost small" @click="trash">Mettre l’essai à la corbeille</button></div>
         </div>
+        </details>
       </aside>
     </div>
   </section>
@@ -519,7 +574,32 @@ async function trash() {
   }
 }
 .side {
-  padding: 8px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+@media (min-width: 1001px) {
+  .layout > .main {
+    position: sticky;
+    top: 8px;
+  }
+}
+.more-sec > summary {
+  cursor: pointer;
+  font-weight: 600;
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+}
+.more-sec[open] > summary {
+  margin-bottom: 8px;
+}
+.bigresult {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 2rem;
+  line-height: 1.1;
 }
 .events .list-item {
   padding: 4px 6px 4px 10px;

@@ -91,18 +91,18 @@ const confident = computed(() => suggestions.value.filter((s) => s.confidence >=
 <template>
   <div class="stack auto">
     <p class="small muted">
-      Le corps de l’athlète est repéré image par image sur cet appareil (rien n’est envoyé). Les appuis et décollages sont ensuite
-      <strong>proposés</strong> : tu valides, ou tu corriges, chaque repère. Une caméra fixe et un athlète bien visible, de profil, donnent les meilleurs résultats.
+      Foulée repère le corps de l’athlète image par image, puis <strong>propose</strong> les appuis et les décollages : tu valides ou tu corriges.
+      Tout se passe sur cet appareil. Une caméra fixe et un athlète bien visible, de profil, donnent les meilleurs résultats.
     </p>
     <div class="row">
-      <button class="btn small" :disabled="running || !timeline" @click="run">{{ running ? 'Analyse…' : 'Détecter le corps et les appuis' }}</button>
+      <button class="btn big" :disabled="running || !timeline" data-testid="auto-run" @click="run">{{ running ? 'Analyse en cours…' : 'Lancer l’analyse automatique' }}</button>
       <button v-if="running" class="btn ghost small" @click="stop">Arrêter</button>
-      <label class="small muted">Précision
-        <select v-model.number="step" :disabled="running" aria-label="Précision de l’analyse">
-          <option :value="0">auto (1 image sur {{ stepUsed }})</option>
-          <option :value="1">toutes les images</option>
-          <option :value="2">1 sur 2</option>
-          <option :value="4">1 sur 4</option>
+      <label class="small muted">Vitesse de l’analyse
+        <select v-model.number="step" :disabled="running" aria-label="Vitesse de l’analyse">
+          <option :value="0">équilibrée (1 image sur {{ stepUsed }})</option>
+          <option :value="1">la plus précise (toutes les images)</option>
+          <option :value="2">rapide (1 image sur 2)</option>
+          <option :value="4">très rapide (1 image sur 4)</option>
         </select>
       </label>
     </div>
@@ -121,11 +121,11 @@ const confident = computed(() => suggestions.value.filter((s) => s.confidence >=
       <p v-if="found.withPose < found.total * 0.5" class="small warn-text">Le corps est mal détecté sur une grande partie de la vidéo : les propositions seront peu fiables.</p>
 
       <section class="stack">
-        <h3>Propositions <span class="muted small">({{ suggestions.length }})</span></h3>
+        <h3>Repères proposés <span class="muted small">({{ suggestions.length }})</span></h3>
         <p v-if="!suggestions.length" class="small muted">Aucun appui à proposer (ou déjà tous posés).</p>
         <template v-else>
           <div class="row">
-            <button class="btn secondary small" :disabled="!confident" @click="acceptAll">Accepter les {{ confident }} sûrs</button>
+            <button class="btn secondary small" :disabled="!confident" @click="acceptAll">Accepter les {{ confident }} repères sûrs</button>
           </div>
           <ul class="plain small">
             <li v-for="s in suggestions" :key="s.type + s.side + s.frame" class="row">
@@ -137,13 +137,17 @@ const confident = computed(() => suggestions.value.filter((s) => s.confidence >=
             </li>
           </ul>
         </template>
-        <p class="small muted">Les repères acceptés sont marqués « auto » et restent modifiables. Vérifie toujours l’image : le modèle peut se tromper (pied caché, flou, fond chargé).</p>
+        <p class="small muted">Les repères acceptés restent modifiables. Vérifie toujours l’image : le modèle peut se tromper (pied caché, flou, fond chargé).</p>
       </section>
     </template>
   </div>
 </template>
 
 <style scoped>
+.big {
+  min-height: 48px;
+  padding: 0 20px;
+}
 .plain {
   list-style: none;
   padding: 0;

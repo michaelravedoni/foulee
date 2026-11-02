@@ -54,19 +54,6 @@ async function scan() {
 const spec = computed(() => specFor(props.discipline));
 const result = computed(() => (spec.value && props.timeline ? analyzeSprint(spec.value, props.analysis.events, props.timeline, props.timeScale, props.fps) : null));
 
-const isHurdles = computed(() => !!spec.value?.hurdles);
-const points = computed(() => {
-  const s = spec.value;
-  if (!s) return [];
-  return s.splitPoints.map((m, i) => {
-    const last = i === s.splitPoints.length - 1;
-    const type = last ? 'arrivee' : isHurdles.value ? 'haie' : 'passage';
-    const label = last ? 'Arrivée' : isHurdles.value ? `Haie ${i + 1}` : `${frNumber(m, 0)} m`;
-    const done = props.analysis.events.some((e) => e.type === type && (type === 'arrivee' ? true : e.position === m));
-    return { m, type, label, done, title: `${last ? 'Arrivée' : isHurdles.value ? `Haie ${i + 1}` : 'Passage'} à ${frNumber(m, 2)} m` };
-  });
-});
-
 const fmt = (m: { value: number; margin: number }, unit: string, minDigits = 0) => formatMeasure(m, unit, frNumber, minDigits);
 const secs = (m: { value: number; margin: number }) => (Number.isFinite(m.value) ? `${frNumber(m.value, 3)} ± ${frNumber(m.margin, 3)} s` : '—');
 const label = (e: MarkedEvent) => eventLabel(e.type, e.side);
@@ -77,28 +64,6 @@ const label = (e: MarkedEvent) => eventLabel(e.type, e.side);
     <p class="muted small">Cette épreuve n’a pas de gabarit de mesure. Utilise les repères libres dans l’onglet Outils.</p>
   </div>
   <div v-else class="stack sprint">
-    <ol class="howto small">
-      <li>Avance image par image avec les flèches ← → du clavier, ou en glissant la barre sous la vidéo, jusqu’à l’image où l’athlète part.</li>
-      <li>Appuie sur <strong>Départ</strong>.</li>
-      <li>Fais de même à chaque passage (10 m, 20 m…) puis à l’<strong>arrivée</strong> : le temps s’affiche dès qu’il y a un départ et une arrivée.</li>
-    </ol>
-    <p v-if="result?.total" class="bigresult" data-testid="sprint-total">{{ secs(result.total) }}</p>
-    <section class="stack">
-      <h3>Repères de la course</h3>
-      <div class="row">
-        <button class="btn secondary small" @click="emit('mark', 'depart')">Départ</button>
-        <button
-          v-for="p in points"
-          :key="p.type + p.m"
-          class="btn small"
-          :class="p.done ? 'ghost done' : 'secondary'"
-          :title="p.title"
-          @click="emit('mark', p.type, undefined, p.m)"
-        >
-          {{ p.label }}<span v-if="p.done" aria-hidden="true"> ✓</span>
-        </button>
-      </div>
-    </section>
     <details class="stack adv">
       <summary>Outils avancés : départ au son, appuis</summary>
     <section class="stack">
