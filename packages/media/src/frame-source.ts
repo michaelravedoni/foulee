@@ -1,6 +1,30 @@
 import { CanvasSink, type InputVideoTrack, type Input } from 'mediabunny';
 import type { FrameTimeline } from '@foulee/core';
 
+/** Image décodée, prête à être dessinée avec drawImage. */
+export type FrameImage = ImageBitmap | HTMLCanvasElement;
+
+function closeImage(img: FrameImage): void {
+  if ('close' in img) img.close();
+}
+
+/**
+ * Copie indépendante de la source (les canvas du décodeur sont réutilisés).
+ * Certains Safari refusent createImageBitmap sur un canvas hors écran : on
+ * recopie alors dans un canvas ordinaire.
+ */
+async function snapshot(src: CanvasImageSource, width: number, height: number): Promise<FrameImage> {
+  try {
+    return await createImageBitmap(src as ImageBitmapSource);
+  } catch {
+    const c = document.createElement('canvas');
+    c.width = width;
+    c.height = height;
+    c.getContext('2d')!.drawImage(src, 0, 0, width, height);
+    return c;
+  }
+}
+
 /**
  * Source d'images exactes : renvoie l'image n° i de la vidéo, quelle que soit
  * la méthode (WebCodecs, ou élément <video> + requestVideoFrameCallback).
@@ -11,7 +35,7 @@ export interface FrameSource {
   readonly width: number;
   readonly height: number;
   /** Image n° i ; `null` si une demande plus récente l'a remplacée. */
-  getFrame(index: number): Promise<ImageBitmap | null>;
+  getFrame(index: number): Promise<FrameImage | null>;
   dispose(): void;
 }
 
@@ -30,9 +54,9 @@ function fitSize(w: number, h: number): { width: number; height: number } {
 }
 
 class LruCache {
-  private map = new Map<number, ImageBitmap>();
+  private map = new Map<number, FrameImage>();
   constructor(private readonly size: number) {}
-  get(k: number): ImageBitmap | undefined {
+  get(k: number): FrameImage | undefined {
     const v = this.map.get(k);
     if (v) {
       this.map.delete(k);
@@ -40,14 +64,14 @@ class LruCache {
     }
     return v;
   }
-  set(k: number, v: ImageBitmap): void {
+  set(k: number, v: FrameImage): void {
     const old = this.map.get(k);
-    if (old && old !== v) old.close();
+    if (old && old !== v) closeImage(old);
     this.map.delete(k);
     this.map.set(k, v);
     while (this.map.size > this.size) {
       const first = this.map.keys().next().value as number;
-      this.map.get(first)?.close();
+      { const f = this.map.get(first); if (f) closeImage(f); }
       this.map.delete(first);
     }
   }
@@ -55,7 +79,7 @@ class LruCache {
     return this.map.has(k);
   }
   clear(): void {
-    for (const v of this.map.values()) v.close();
+    for (const v of this.map.values()) closeImage(v);
     this.map.clear();
   }
 }
@@ -90,7 +114,7 @@ export class WebCodecsFrameSource implements FrameSource {
     this.sink = new CanvasSink(track, { width: size.width, height: size.height, fit: 'fill', poolSize: 2 });
   }
 
-  getFrame(index: number): Promise<ImageBitmap | null> {
+  getFrame(index: number): Promise<FrameImage | null> {
     const i = this.timeline.clamp(index);
     const hit = this.cache.get(i);
     if (hit) {
@@ -106,7 +130,7 @@ export class WebCodecsFrameSource implements FrameSource {
     return run;
   }
 
-  private async decodeTo(i: number): Promise<ImageBitmap | null> {
+  private async decodeTo(i: number): Promise<FrameImage | null> {
     if (this.disposed) return null;
     if (this.target !== i) return this.cache.get(i) ?? null; // remplacée par une demande plus récente
     const cached = this.cache.get(i);
@@ -126,9 +150,9 @@ export class WebCodecsFrameSource implements FrameSource {
       }
       const idx = this.timeline.frameAt(r.value.timestamp);
       this.iterLast = idx;
-      const bmp = await createImageBitmap(r.value.canvas);
+      const bmp = await snapshot(r.value.canvas, this.width, this.height);
       if (this.disposed) {
-        bmp.close();
+        closeImage(bmp);
         return null;
       }
       this.cache.set(idx, bmp);
@@ -139,7 +163,7 @@ export class WebCodecsFrameSource implements FrameSource {
     return this.cache.get(i) ?? this.nearestCached(i);
   }
 
-  private nearestCached(i: number): ImageBitmap | null {
+  private nearestCached(i: number): FrameImage | null {
     for (let d = 1; d < 4; d++) {
       const v = this.cache.get(i - d);
       if (v) return v;
@@ -192,7 +216,7 @@ export class VideoElementFrameSource implements FrameSource {
     });
   }
 
-  getFrame(index: number): Promise<ImageBitmap | null> {
+  getFrame(index: number): Promise<FrameImage | null> {
     const i = this.timeline.clamp(index);
     const hit = this.cache.get(i);
     this.target = i;
@@ -202,7 +226,7 @@ export class VideoElementFrameSource implements FrameSource {
       await this.ready;
       const t = this.timeline.timeOf(i) + this.timeline.durationOf(i) / 2;
       await seekPresented(this.video, t);
-      const bmp = await createImageBitmap(this.video, { resizeWidth: this.width, resizeHeight: this.height });
+      const bmp = await snapshot(this.video, this.width, this.height);
       this.cache.set(i, bmp);
       return bmp;
     });
