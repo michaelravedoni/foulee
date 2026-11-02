@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watchEffect } from 'vue';
 import { RouterLink, RouterView } from 'vue-router';
-import { initStore, state } from './store/data';
+import { initStore, resetLocalStorage, state } from './store/data';
 import { settings } from './store/settings';
 import { applyUpdate, needRefresh, offlineReady, setupPwa } from './lib/pwa';
 import { locked } from './lib/lock';
 import LockOverlay from './components/LockOverlay.vue';
 
+const location = window.location;
 const online = ref(navigator.onLine);
 window.addEventListener('online', () => (online.value = true));
 window.addEventListener('offline', () => (online.value = false));
@@ -20,6 +21,11 @@ watchEffect(() => {
   document.documentElement.classList.toggle('terrain', settings.terrain);
 });
 
+async function reset() {
+  if (!confirm('Effacer TOUTES les données locales de Foulée sur cet appareil (athlètes, essais, vidéos) ? Exporte d’abord ton coffre si c’est possible.')) return;
+  await resetLocalStorage();
+  location.reload();
+}
 const logo = `${import.meta.env.BASE_URL}favicon.svg`;
 const jobs = computed(() => [...state.jobs.values()]);
 </script>
@@ -61,10 +67,19 @@ const jobs = computed(() => [...state.jobs.values()]);
       Foulée est prête à fonctionner sans réseau.
       <button class="btn ghost small" @click="offlineReady = false">OK</button>
     </div>
-    <div v-if="state.error" class="banner warn">{{ state.error }}</div>
+    <div v-if="state.error && !state.failed" class="banner warn">{{ state.error }}</div>
 
     <main class="content">
-      <div v-if="!state.ready" class="empty">Ouverture du coffre…</div>
+      <div v-if="!state.ready" class="empty">Ouverture du coffre… <span class="small">({{ state.step }})</span></div>
+      <div v-else-if="state.failed" class="card stack">
+        <h1>Le coffre ne s’ouvre pas</h1>
+        <p>{{ state.error }}</p>
+        <p class="small muted">Tes données ne sont pas effacées. Ferme les autres onglets de Foulée puis réessaie.</p>
+        <div class="row">
+          <button class="btn" @click="location.reload()">Réessayer</button>
+          <button class="btn danger" @click="reset">Réinitialiser le stockage local</button>
+        </div>
+      </div>
       <RouterView v-else />
     </main>
 

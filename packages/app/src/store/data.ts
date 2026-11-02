@@ -25,6 +25,10 @@ import { settings } from './settings';
 export const state = reactive({
   ready: false,
   error: '' as string,
+  /** Étape en cours à l'ouverture du coffre (affichée si ça bloque). */
+  step: 'démarrage',
+  /** Vrai si l'ouverture du coffre a échoué : l'app propose de réessayer ou de réinitialiser. */
+  failed: false as boolean,
   providerName: '',
   persistent: false as boolean,
   athletes: new Map<string, Athlete>(),
@@ -45,6 +49,8 @@ function vault(): Vault {
 }
 
 export async function initStore(): Promise<void> {
+  state.failed = false;
+  state.error = '';
   try {
     let provider: StorageProvider;
     if (OpfsProvider.isSupported()) provider = new OpfsProvider();
@@ -53,15 +59,33 @@ export async function initStore(): Promise<void> {
       state.error = 'Ce navigateur ne permet pas le stockage local (OPFS) : les données seront perdues à la fermeture.';
     }
     const v = new Vault(provider, `Foulée ${__APP_VERSION__}`);
+    state.step = 'ouverture du coffre';
     await v.open();
     vaultRef.value = v;
     state.providerName = provider.name;
+    state.step = 'lecture des fiches';
     await reload();
     if (navigator.storage?.persisted) state.persistent = await navigator.storage.persisted();
   } catch (e) {
-    state.error = `Ouverture du coffre impossible : ${e instanceof Error ? e.message : String(e)}`;
+    state.failed = true;
+    state.error = `Ouverture du coffre impossible (étape : ${state.step}) : ${e instanceof Error ? e.message : String(e)}`;
   } finally {
     state.ready = true;
+  }
+}
+
+/** Efface le stockage local de cet appareil (dernier recours, après confirmation). */
+export async function resetLocalStorage(): Promise<void> {
+  try {
+    const root = await navigator.storage.getDirectory();
+    await root.removeEntry('foulee-vault', { recursive: true });
+  } catch {
+    // dossier déjà absent
+  }
+  try {
+    localStorage.removeItem('foulee.settings.v1');
+  } catch {
+    // ignoré
   }
 }
 

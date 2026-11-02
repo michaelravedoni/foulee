@@ -1,4 +1,4 @@
-import { CanvasSink, type InputVideoTrack, type Input } from 'mediabunny';
+import { VideoSampleSink, type InputVideoTrack, type Input, type VideoSample } from 'mediabunny';
 import type { FrameTimeline } from '@foulee/core';
 
 /** Image décodée, prête à être dessinée avec drawImage. */
@@ -93,9 +93,9 @@ export class WebCodecsFrameSource implements FrameSource {
   readonly kind = 'webcodecs' as const;
   readonly width: number;
   readonly height: number;
-  private readonly sink: CanvasSink;
+  private readonly sink: VideoSampleSink;
   private readonly cache = new LruCache(CACHE_SIZE);
-  private iter: AsyncGenerator<{ canvas: HTMLCanvasElement | OffscreenCanvas; timestamp: number }> | null = null;
+  private iter: AsyncGenerator<VideoSample> | null = null;
   private iterLast = -1;
   private target = -1;
   private busy: Promise<void> = Promise.resolve();
@@ -111,7 +111,7 @@ export class WebCodecsFrameSource implements FrameSource {
     const size = fitSize(displayWidth, displayHeight);
     this.width = size.width;
     this.height = size.height;
-    this.sink = new CanvasSink(track, { width: size.width, height: size.height, fit: 'fill', poolSize: 2 });
+    this.sink = new VideoSampleSink(track);
   }
 
   getFrame(index: number): Promise<FrameImage | null> {
@@ -139,7 +139,7 @@ export class WebCodecsFrameSource implements FrameSource {
     if (!continueForward) {
       await this.iter?.return(undefined);
       const start = Math.max(0, i - PREFETCH_BACK);
-      this.iter = this.sink.canvases(this.timeline.timeOf(start));
+      this.iter = this.sink.samples(this.timeline.timeOf(start));
       this.iterLast = start - 1;
     }
     while (this.iter) {
@@ -150,7 +150,18 @@ export class WebCodecsFrameSource implements FrameSource {
       }
       const idx = this.timeline.frameAt(r.value.timestamp);
       this.iterLast = idx;
-      const bmp = await snapshot(r.value.canvas, this.width, this.height);
+      const sample = r.value;
+      let bmp: FrameImage;
+      try {
+        // Copie dans un canvas ordinaire : ni OffscreenCanvas ni createImageBitmap (capricieux sous Safari).
+        const c = document.createElement('canvas');
+        c.width = this.width;
+        c.height = this.height;
+        sample.draw(c.getContext('2d')!, 0, 0, this.width, this.height);
+        bmp = c;
+      } finally {
+        sample.close();
+      }
       if (this.disposed) {
         closeImage(bmp);
         return null;
