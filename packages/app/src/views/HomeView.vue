@@ -33,7 +33,7 @@ async function newSession() {
 <template>
   <section class="stack">
     <div class="hero card">
-      <h1>Bonjour 👋</h1>
+      <h1>Bonjour</h1>
       <p class="muted">Filme avec l’app caméra de l’appareil, puis importe la vidéo ici. Tout reste sur cet appareil, même sans réseau.</p>
       <div class="row">
         <VideoPicker label="Essai rapide (séance du jour)" @picked="quickImport" />

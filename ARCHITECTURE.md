@@ -207,3 +207,16 @@ La licence du projet est provisoirement « tous droits réservés » (voir `LICE
   Le critère « temps d'analyse divisé par deux » n'a pas été mesuré.
 - Hors périmètre de cette phase : tracking automatique des dessins (seules les trajectoires se suivent), angles articulaires automatiques, texte de rapport
   par LLM (les textes de rapport restent générés par règles à partir des mesures).
+
+## Système de design « Foulée » (Cream / Void)
+
+- Source : le système « Foulée » enregistré dans Claude (`tokens.json`, README et composants). Repris dans `packages/app/src/design.css` : jetons sémantiques
+  (`surface`, `ink`, `ink-muted`, `fill`, `on-fill`, `hairline`, `control-border`, `overlay-primary/secondary`, `focus-ring`) pour les deux thèmes.
+- **Cream** (`:root`, `[data-theme='cream']`) pour l'accueil, les listes et le panneau de mesures ; **Void** (`[data-theme='void']` et `.player`) pour la vidéo et ses commandes.
+  Fiche d'essai en diptyque : panneau Cream à gauche (320-400 px), panneau Void qui prend le reste (empilés sous 1000 px).
+- Aucun accent chromatique, aucune ombre : l'ancien orange et les verts/rouges d'état sont remplacés par le contraste noir/blanc et la graisse. Les anciennes variables
+  (`--bg`, `--text`, `--accent`…) sont des alias déclarés **dans chaque thème** (une propriété personnalisée est résolue là où elle est déclarée).
+- Navigation : rangée de liens texte en bas à droite (pas de barre supérieure collante). Titre d'écran en Archivo Black capitales, une fois par écran ; le reste en Inter (poids 300/450/500).
+- Polices embarquées (`@fontsource-variable/inter`, `@fontsource/archivo-black`) : pas de CDN, fonctionne hors ligne. Plus d'émojis dans l'interface.
+- Calques sur la vidéo : squelette et étalon en `overlay-primary` (crème sur Void) ; les couleurs de dessin choisies par l'utilisateur restent libres.
+- Icônes de l'application redessinées (courbe crème sur fond noir). Pas porté : composants `Chip`, `PhaseTimeline`, `MetricRow` du système (les équivalents de l'application, boutons à bascule, onglets, tableaux, en reprennent les jetons).

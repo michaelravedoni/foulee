@@ -498,6 +498,15 @@ async function trash() {
   gap: 16px;
   align-items: start;
 }
+/* Diptyque : panneau Cream (mesures) à gauche, panneau Void (vidéo) qui prend le reste. */
+@media (min-width: 1001px) {
+  .layout {
+    grid-template-columns: minmax(320px, 400px) minmax(0, 1fr);
+  }
+  .layout > .side {
+    order: -1;
+  }
+}
 @media (max-width: 1000px) {
   .layout {
     grid-template-columns: 1fr;

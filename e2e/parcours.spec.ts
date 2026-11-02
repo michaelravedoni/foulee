@@ -21,7 +21,7 @@ async function waitFrame(page: Page, n: number) {
 
 test('séance complète : athlète, séance, import, image par image, dessin, comparaison, export', async ({ page }) => {
   await page.goto('./');
-  await expect(page.getByRole('heading', { name: 'Bonjour 👋' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Bonjour' })).toBeVisible();
 
   // Athlète
   await page.getByRole('navigation').getByRole('link', { name: 'Athlètes' }).click();
@@ -224,7 +224,7 @@ test('fonctionne hors-ligne après le premier chargement', async ({ page, contex
   await page.evaluate(async () => navigator.serviceWorker.ready);
   await context.setOffline(true);
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Bonjour 👋' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Bonjour' })).toBeVisible();
   await page.getByRole('navigation').getByRole('link', { name: 'Replay' }).click();
   await expect(page.getByRole('heading', { name: 'Replay différé' })).toBeVisible();
   await context.setOffline(false);
@@ -232,14 +232,14 @@ test('fonctionne hors-ligne après le premier chargement', async ({ page, contex
 
 test('le mode Terrain ne casse pas la mise en page', async ({ page }) => {
   await page.goto('./');
-  await expect(page.getByRole('heading', { name: 'Bonjour 👋' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Bonjour' })).toBeVisible();
   await page.getByRole('button', { name: 'Analyse' }).click();
   await expect(page.getByRole('button', { name: 'Terrain' })).toBeVisible();
   const width = await page.evaluate(() => [innerWidth, document.documentElement.getBoundingClientRect().width]);
   expect(width[1]).toBe(width[0]);
   // le mode persiste après rechargement
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Bonjour 👋' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Bonjour' })).toBeVisible();
   const again = await page.evaluate(() => [innerWidth, document.documentElement.getBoundingClientRect().width, document.documentElement.getBoundingClientRect().height]);
   expect(again[1]).toBe(again[0]);
   expect(again[2]).toBeGreaterThan(100);
@@ -313,7 +313,7 @@ test('sauvegarde chiffrée sur WebDAV, puis restauration sur un nouvel appareil'
   const a = await ctx1.newPage();
   await a.route('https://dav.test/**', handler);
   await a.goto('./');
-  await expect(a.getByRole('heading', { name: 'Bonjour 👋' })).toBeVisible();
+  await expect(a.getByRole('heading', { name: 'Bonjour' })).toBeVisible();
   await a.getByRole('navigation').getByRole('link', { name: 'Athlètes' }).click();
   await a.getByRole('button', { name: '＋ Ajouter' }).click();
   await a.getByLabel('Prénom').fill('Léa');
@@ -342,7 +342,7 @@ test('sauvegarde chiffrée sur WebDAV, puis restauration sur un nouvel appareil'
   const b = await ctx2.newPage();
   await b.route('https://dav.test/**', handler);
   await b.goto('./');
-  await expect(b.getByRole('heading', { name: 'Bonjour 👋' })).toBeVisible();
+  await expect(b.getByRole('heading', { name: 'Bonjour' })).toBeVisible();
   await b.goto('./#/sauvegardes');
   await b.getByRole('button', { name: /Ajouter une destination/ }).click();
   await b.getByLabel('Adresse du dossier').fill(URL_DAV);

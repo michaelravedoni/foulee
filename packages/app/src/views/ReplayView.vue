@@ -133,7 +133,7 @@ onBeforeUnmount(stop);
         <button class="btn ghost small" @click="switchCamera">↺ Caméra {{ facing === 'environment' ? 'arrière' : 'avant' }}</button>
         <button v-if="!running" class="btn" @click="start">▶︎ Démarrer</button>
         <button v-else class="btn danger" @click="stop">■ Arrêter</button>
-        <button class="btn ghost small" :disabled="!running" @click="locked = true">🔒 Verrouiller</button>
+        <button class="btn ghost small" :disabled="!running" @click="locked = true">Verrouiller</button>
       </div>
     </div>
     <p class="small muted">
@@ -175,7 +175,7 @@ onBeforeUnmount(stop);
         <select v-model="saveDiscipline" style="width: auto" aria-label="Épreuve">
           <option v-for="d in DISCIPLINES" :key="d.id" :value="d.id">{{ d.label }}</option>
         </select>
-        <button class="btn" :disabled="saving || status.mode !== 'encode'" @click="saveClip">💾 Enregistrer</button>
+        <button class="btn" :disabled="saving || status.mode !== 'encode'" @click="saveClip">Enregistrer</button>
       </div>
       <p v-if="savedMsg" class="small">
         {{ savedMsg }}

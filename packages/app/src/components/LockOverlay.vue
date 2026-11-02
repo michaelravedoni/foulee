@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Ico from './Ico.vue';
 import { onBeforeUnmount, ref } from 'vue';
 
 const emit = defineEmits<{ unlock: [] }>();
@@ -42,7 +43,7 @@ onBeforeUnmount(() => cancelAnimationFrame(raf));
         <circle cx="50" cy="50" r="44" class="track" />
         <circle cx="50" cy="50" r="44" class="bar" :style="{ strokeDashoffset: 276.5 * (1 - progress) }" />
       </svg>
-      <span>🔒</span>
+      <Ico name="lock" :size="28" />
     </button>
     <p>Écran verrouillé · maintenir le cadenas pour déverrouiller</p>
   </div>

@@ -67,9 +67,9 @@ async function run() {
     t0 = performance.now();
     await source.getFrame(mid - 1);
     log(`Puis image précédente : ${(performance.now() - t0).toFixed(0)} ms`);
-    log('✅ Test terminé : envoie ces lignes à ton développeur.');
+    log('OK · Test terminé : envoie ces lignes à ton développeur.');
   } catch (e) {
-    log(`❌ Erreur : ${e instanceof Error ? e.message : String(e)}`);
+    log(`Erreur : ${e instanceof Error ? e.message : String(e)}`);
   } finally {
     opened?.source.dispose();
     running.value = false;
@@ -86,7 +86,7 @@ const ua = navigator.userAgent;
       <h2>Capacités de cet appareil</h2>
       <ul class="list">
         <li v-for="c in checks" :key="c.label" class="list-item">
-          <span>{{ c.ok ? '✅' : '⚠️' }}</span>
+          <span>{{ c.ok ? 'OK' : 'Attention' }}</span>
           <span class="grow">{{ c.label }}</span>
         </li>
       </ul>
